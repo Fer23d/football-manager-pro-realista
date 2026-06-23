@@ -52,7 +52,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 /* CONTENT */
 #content{flex:1;overflow-y:auto;padding:16px}
-.page{display:none}
+.page{display:none;animation:pageIn .22s ease}
 .page.active{display:block}
 .page-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
 .page-title{font-size:1.1rem;font-weight:700}
@@ -81,13 +81,16 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .field-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
 .field-toolbar{padding:8px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .formation-sel{background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:4px 8px;border-radius:var(--r2);font-size:.78rem;cursor:pointer}
-.field{position:relative;background:linear-gradient(180deg,#0a2e18 0%,#0d3b20 25%,#0f4224 50%,#0d3b20 75%,#0a2e18 100%);aspect-ratio:3/4.2;max-height:520px;display:flex;flex-direction:column;justify-content:space-between;padding:8px 6px;overflow:hidden;user-select:none}
+.field{position:relative;background:linear-gradient(180deg,#0a2e18 0%,#0d3b20 25%,#0f4224 50%,#0d3b20 75%,#0a2e18 100%);aspect-ratio:3/4.2;max-height:560px;display:flex;flex-direction:column;justify-content:space-between;padding:8px 6px;overflow:hidden;user-select:none;box-shadow:inset 0 0 45px rgba(0,0,0,.28)}
 .field-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;opacity:.35}
 .player-rows{display:flex;flex-direction:column;justify-content:space-between;height:100%;position:relative;z-index:2}
 .player-row{display:flex;justify-content:center;gap:4px;align-items:center}
-.pspot{display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;transition:transform .2s;position:relative}
-.pspot:hover{transform:scale(1.1)}
-.pspot.drag-over .pavatar{border-color:var(--accent)!important;box-shadow:0 0 12px var(--accent)}
+.pspot{display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;transition:transform .2s,filter .2s;position:relative}
+.pspot:hover{transform:scale(1.08)}
+.pspot.drag-over .pavatar,.pspot.slot-valid .pavatar{border-color:var(--green)!important;box-shadow:0 0 0 3px rgba(34,197,94,.18),0 0 18px rgba(34,197,94,.75)}
+.pspot.slot-invalid .pavatar{border-color:var(--red)!important;box-shadow:0 0 0 3px rgba(239,68,68,.16),0 0 18px rgba(239,68,68,.72)}
+.pspot.slot-valid:after,.pspot.slot-invalid:after{content:attr(data-role);position:absolute;top:-18px;background:rgba(2,6,23,.9);border:1px solid var(--border2);border-radius:6px;padding:2px 6px;font-size:.55rem;font-weight:800;white-space:nowrap;color:#fff}
+.pspot.slot-valid:after{color:#86efac}.pspot.slot-invalid:after{color:#fca5a5}
 .pavatar{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;border:2px solid rgba(255,255,255,.2);transition:.2s;flex-shrink:0;position:relative;overflow:hidden}
 .pavatar.filled{border-color:var(--green)}
 .pavatar.empty{border-color:rgba(255,255,255,.15);border-style:dashed}
@@ -99,8 +102,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .bench-section{background:var(--bg3);border-top:1px solid var(--border);padding:8px 12px}
 .bench-title{font-size:.65rem;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);margin-bottom:6px}
 .bench-row{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
-.bench-player{display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;flex-shrink:0;opacity:.7;transition:.2s}
-.bench-player:hover{opacity:1}
+.bench-player{display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;flex-shrink:0;opacity:.78;transition:transform .2s,opacity .2s,filter .2s}
+.bench-player:hover{opacity:1;transform:translateY(-2px)}
+.bench-row.drop-zone{outline:1px dashed var(--green);outline-offset:4px;border-radius:8px}
 .bench-avatar{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.55rem;font-weight:700;border:1.5px solid rgba(255,255,255,.2)}
 
 /* PLAYER CARDS */
@@ -261,23 +265,36 @@ tr.my-club td:first-child{border-left:3px solid var(--green)}
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:var(--bg)}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
-#startup{position:fixed;inset:0;background:var(--bg);z-index:500;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px}
-.startup-logo{font-size:2.5rem;font-weight:900;color:var(--green)}
+#startup{position:fixed;inset:0;background:radial-gradient(circle at 50% 20%,rgba(34,197,94,.18),transparent 38%),var(--bg);z-index:500;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;transition:opacity .45s}
+.startup-logo{font-size:2.5rem;font-weight:900;color:var(--green);letter-spacing:.5px}
 .startup-logo span{color:var(--accent)}
 .startup-sub{color:var(--text2);font-size:.85rem}
 .startup-progress{width:260px;height:4px;background:var(--bg3);border-radius:2px;overflow:hidden}
-.startup-fill{height:100%;background:var(--green);border-radius:2px;transition:width .05s}
+.startup-fill{height:100%;background:linear-gradient(90deg,var(--green),var(--accent));border-radius:2px;transition:width .18s}
 .startup-text{color:var(--text3);font-size:.72rem}
 @media(max-width:768px){#sidebar{display:none}.tb-stats{display:none}}
 @media(max-width:600px){.gap-grid{grid-template-columns:1fr 1fr}.two-col{grid-template-columns:1fr}}
+@keyframes pageIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 </style>
 
 <style>
-#introOverlay{position:fixed;inset:0;background:#000;z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#fff;font-family:Arial;text-align:center}
-#introOverlay h1{font-size:48px;margin-bottom:20px;animation:fade 2s infinite alternate}
-#introOverlay p{max-width:700px;margin:10px;font-size:20px}
-#startCareerBtn{padding:14px 28px;font-size:18px;cursor:pointer;margin-top:25px}
-@keyframes fade{from{opacity:.5}to{opacity:1}}
+#introOverlay{position:fixed;inset:0;background:#020403;z-index:99999;display:flex;align-items:center;justify-content:center;color:#fff;font-family:Arial;text-align:center;overflow:hidden;transition:opacity .8s ease,visibility .8s ease}
+#introOverlay.hide{opacity:0;visibility:hidden;pointer-events:none}
+#introOverlay:before{content:"";position:absolute;inset:-15%;background:radial-gradient(circle at 50% 92%,rgba(34,197,94,.42),transparent 20%),radial-gradient(circle at 12% 8%,rgba(59,130,246,.36),transparent 22%),radial-gradient(circle at 88% 12%,rgba(245,158,11,.28),transparent 18%),linear-gradient(180deg,#030712 0%,#07140d 56%,#020403 100%);animation:stadiumDrift 9s ease-in-out infinite alternate}
+#introOverlay:after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,rgba(255,255,255,.045) 0 1px,transparent 1px 72px),linear-gradient(transparent 66%,rgba(255,255,255,.10) 67%,transparent 68%);filter:blur(.2px);opacity:.42;animation:lightsSweep 5.5s linear infinite}
+#introOverlay>h1,#introOverlay>p{display:none}
+.cinematic-inner{position:relative;z-index:2;width:min(880px,92vw);display:flex;flex-direction:column;align-items:center;gap:18px}
+.cinematic-kicker{font-size:.72rem;text-transform:uppercase;letter-spacing:3px;color:var(--green);font-weight:800;opacity:.85}
+.cinematic-title{font-size:clamp(2.4rem,8vw,5.8rem);line-height:.9;font-weight:950;letter-spacing:0;text-shadow:0 0 32px rgba(34,197,94,.36);margin:0;animation:titlePulse 2.8s ease-in-out infinite alternate}
+.cinematic-line{min-height:38px;font-size:clamp(1rem,2.6vw,1.55rem);color:#dbeafe;font-weight:700;text-shadow:0 4px 24px rgba(0,0,0,.72);opacity:0;transform:translateY(10px);transition:opacity .5s,transform .5s}
+.cinematic-line.show{opacity:1;transform:translateY(0)}
+.cinematic-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:8px}
+#startCareerBtn,.skip-intro-btn{border:none;border-radius:8px;padding:12px 18px;font-size:.9rem;font-weight:800;cursor:pointer;color:#02130a;background:linear-gradient(135deg,var(--green),#86efac);box-shadow:0 12px 36px rgba(34,197,94,.25);transition:transform .2s,box-shadow .2s}
+.skip-intro-btn{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.20);box-shadow:none}
+#startCareerBtn:hover,.skip-intro-btn:hover{transform:translateY(-2px)}
+@keyframes stadiumDrift{from{transform:scale(1) translateY(0)}to{transform:scale(1.05) translateY(-10px)}}
+@keyframes lightsSweep{from{background-position:0 0,0 0}to{background-position:160px 0,0 0}}
+@keyframes titlePulse{from{filter:brightness(.9)}to{filter:brightness(1.25)}}
 </style>
 </head>
 <body>
@@ -286,7 +303,15 @@ tr.my-club td:first-child{border-left:3px solid var(--green)}
 <p>Você não será apenas um treinador.</p>
 <p>Você construirá uma dinastia, descobrirá talentos e criará lendas.</p>
 <p>Seu legado começa agora.</p>
+<div class="cinematic-inner">
+  <div class="cinematic-kicker">Football Manager Pro</div>
+  <h1 class="cinematic-title">FM PRO</h1>
+  <div class="cinematic-line" id="cinematicLine">Voce nao apenas gerencia um time...</div>
+  <div class="cinematic-actions">
 <button id="startCareerBtn">Iniciar Carreira</button>
+    <button class="skip-intro-btn" onclick="skipCinematicIntro()">Pular Intro</button>
+  </div>
+</div>
 </div>
 
 
@@ -464,6 +489,10 @@ const LEAGUES_DATA={
   'La Liga':{country:'🇪🇸',clubs:['Real Madrid','Barcelona','Atletico Madrid','Sevilla','Real Betis','Villarreal','Athletic Club','Valencia','Real Sociedad','Getafe','Osasuna','Celta Vigo','Rayo Vallecano','Almeria','Cadiz','Girona','Mallorca','Las Palmas','Leganes','Alaves']},
   'Serie A':{country:'🇮🇹',clubs:['Inter','Milan','Juventus','Napoli','Roma','Lazio','Atalanta','Fiorentina','Torino','Bologna','Udinese','Sassuolo','Monza','Empoli','Lecce','Salernitana','Hellas Verona','Spezia','Cremonese','Sampdoria']},
   'Bundesliga':{country:'🇩🇪',clubs:['Bayern','Dortmund','Leverkusen','Frankfurt','Union Berlin','Freiburg','Leipzig','Wolfsburg','Mainz','Hoffenheim','Bochum','Stuttgart','Augsburg','Hertha','Schalke','Cologne','Bremen','Monchengladbach','Dusseldorf','Nurnberg']},
+  'Ligue 1':{country:'FR',clubs:['PSG','Marseille','Lyon','Monaco','Lille','Rennes','Nice','Lens','Nantes','Montpellier','Strasbourg','Toulouse','Reims','Brest','Lorient','Metz','Le Havre','Auxerre','Saint-Etienne','Angers']},
+  'MLS':{country:'US',clubs:['Inter Miami','LA Galaxy','LAFC','Seattle Sounders','Atlanta United','New York City','New York Red Bulls','Orlando City','Austin FC','Portland Timbers','Columbus Crew','FC Cincinnati','Nashville SC','Charlotte FC','Chicago Fire','Dallas','Houston Dynamo','Sporting KC','Toronto FC','Vancouver Whitecaps']},
+  'Liga MX':{country:'MX',clubs:['America','Chivas','Cruz Azul','Pumas','Tigres','Monterrey','Toluca','Pachuca','Leon','Santos Laguna','Atlas','Puebla','Tijuana','Queretaro','Necaxa','Mazatlan','Juarez','Atletico San Luis']},
+  'Libertadores':{country:'SA',clubs:['Flamengo','Palmeiras','River Plate','Boca Juniors','Fluminense','Gremio','Internacional','Sao Paulo','Atletico-MG','Botafogo','Nacional','Penarol','Colo-Colo','Olimpia','LDU Quito','Independiente del Valle','Atletico Nacional','Junior','Cerro Porteno','Universitario']},
 };
 const CUP_DATA={
   'Copa do Brasil':{country:'🇧🇷',rounds:['Oitavas','Quartas','Semifinal','Final']},
@@ -478,6 +507,7 @@ const BADGE_EMOJIS=['⚽','🦁','🦅','🐯','🦊','🐉','⭐','🔴','🔵'
 // ═══════════════════════════════════════════════════════════
 let G={
   season:1,
+  career:{league:'Brasileirao',canMoveLeague:true,history:[]},
   club:{name:'Meu Clube',badge:'⚽',color:'#22c55e',budget:50e6,sponsorship:3e6},
   players:[],
   squad:[],
@@ -1280,9 +1310,15 @@ function save(){
 function load(){
   try{
     const raw=localStorage.getItem('fmpro_v5');
-    if(raw){const d=JSON.parse(raw);Object.assign(G,d);return true;}
+    if(raw){const d=JSON.parse(raw);Object.assign(G,d);migrateSaveState();return true;}
   }catch(e){}
   return false;
+}
+
+function migrateSaveState(){
+  G.career=G.career||{league:G.league?.name||'Brasileirao',canMoveLeague:true,history:[]};
+  G.career.history=G.career.history||[];
+  G.allClubs=(G.allClubs||[]).map(c=>({...c,style:c.style||pick(TEAM_STYLES),form:c.form||c.stats?.form||[]}));
 }
 
 function quickSave(){save();toast('💾 Jogo salvo!','ok');}
@@ -1300,6 +1336,7 @@ function nav(page){
   if(sbEl)sbEl.classList.add('active');
   _curPage=page;
   updateTopbar();
+  if(page==='tactics')setTimeout(enableDragAndDropTactics,0);
 }
 
 function updateTopbar(){
@@ -1416,9 +1453,10 @@ function renderTactics(){
       const inj=player&&G.injuries[player.id];
       const sus=player&&G.suspensions[player.id];
       if(player){
-        return`<div class="pspot" draggable="true"
+        return`<div class="pspot" draggable="true" data-slot="${idx}" data-role="${slot.p}" title="Ideal: ${slot.p}"
           ondragstart="dragStart(event,${player.id},'squad',${idx})"
-          ondragover="event.preventDefault();this.classList.add('drag-over')"
+          ondragend="clearTacticHighlights()"
+          ondragover="slotDragOver(event,${idx})"
           ondragleave="this.classList.remove('drag-over')"
           ondrop="dropOnSlot(event,${idx})"
           onclick="openPlayer(${player.id})">
@@ -1430,8 +1468,8 @@ function renderTactics(){
           <div class="p-pos-tag">${slot.p}${inj?' 🤕':sus?' 🟨':''}</div>
         </div>`;
       } else {
-        return`<div class="pspot"
-          ondragover="event.preventDefault();this.classList.add('drag-over')"
+        return`<div class="pspot" data-slot="${idx}" data-role="${slot.p}" title="Ideal: ${slot.p}"
+          ondragover="slotDragOver(event,${idx})"
           ondragleave="this.classList.remove('drag-over')"
           ondrop="dropOnSlot(event,${idx})">
           <div class="pavatar empty" style="border-color:${posC}44">
@@ -1447,6 +1485,7 @@ function renderTactics(){
   const benchHtml=G.bench.slice(0,7).map((p,bi)=>`
     <div class="bench-player" draggable="true"
       ondragstart="dragStart(event,${p.id},'bench',${bi})"
+      ondragend="clearTacticHighlights()"
       onclick="openPlayer(${p.id})">
       <div class="bench-avatar" style="background:${posColor(p.position)}22;color:${posColor(p.position)};border-color:${posColor(p.position)}">
         ${initials(p.name)}</div>
@@ -1464,12 +1503,13 @@ function renderTactics(){
           <button class="btn btn-green btn-sm" onclick="autoFill();nav('tactics')">⚡ Auto</button>
           <button class="btn btn-ghost btn-sm" onclick="G.squad=[];G.bench=[];save();nav('tactics')">🗑️ Limpar</button>
           <span class="small muted">${G.squad.length}/${totalSlots}</span>
+          <span class="small muted">Arraste: verde encaixa, vermelho nao encaixa</span>
         </div>
         <div class="field" ondragover="event.preventDefault()" ondrop="dropOnField(event)">
           <svg class="field-svg" viewBox="0 0 280 390"><rect x="10" y="10" width="260" height="370" rx="4" fill="none" stroke="white" stroke-width="1.5"/><line x1="10" y1="195" x2="270" y2="195" stroke="white" stroke-width="1" opacity=".6"/><circle cx="140" cy="195" r="38" fill="none" stroke="white" stroke-width="1" opacity=".5"/><circle cx="140" cy="195" r="3" fill="white" opacity=".6"/><rect x="80" y="10" width="120" height="55" fill="none" stroke="white" stroke-width="1" opacity=".5"/><rect x="80" y="325" width="120" height="55" fill="none" stroke="white" stroke-width="1" opacity=".5"/><rect x="104" y="10" width="72" height="25" fill="none" stroke="white" stroke-width="1" opacity=".4"/><rect x="104" y="355" width="72" height="25" fill="none" stroke="white" stroke-width="1" opacity=".4"/></svg>
           <div class="player-rows">${rowsHtml}</div>
         </div>
-        <div class="bench-section">
+        <div class="bench-section" ondragover="benchDragOver(event)" ondragleave="this.querySelector('.bench-row')?.classList.remove('drop-zone')" ondrop="dropOnBench(event)">
           <div class="bench-title">BANCO (${G.bench.length})</div>
           <div class="bench-row">${benchHtml||'<span class="small muted">Vazio — arraste jogadores aqui</span>'}</div>
         </div>
@@ -1515,12 +1555,58 @@ function renderTactics(){
 
 // Drag & Drop
 let _dragData={};
-function dragStart(e,pid,from,idx){_dragData={pid,from,idx};e.dataTransfer.effectAllowed='move';}
+function enableDragAndDropTactics(){clearTacticHighlights();}
+function dragStart(e,pid,from,idx){
+  _dragData={pid,from,idx};
+  e.dataTransfer.effectAllowed='move';
+  e.dataTransfer.setData('text/plain',String(pid));
+  highlightValidSlots(pid);
+}
+function clearTacticHighlights(){
+  document.querySelectorAll('.pspot').forEach(el=>el.classList.remove('drag-over','slot-valid','slot-invalid'));
+  document.querySelectorAll('.bench-row').forEach(el=>el.classList.remove('drop-zone'));
+}
+function getDraggedPlayer(){
+  return G.players.find(p=>p.id===_dragData.pid)||G.squad.find(p=>p&&p.id===_dragData.pid)||G.bench.find(p=>p.id===_dragData.pid);
+}
+function slotPosition(idx){
+  return FORMATIONS[G.formation].rows.flat()[idx]?.p;
+}
+function isValidSlotForPlayer(player,idx){
+  const pos=slotPosition(idx);
+  return !!(player&&pos&&getCompat(pos).includes(player.position));
+}
+function highlightValidSlots(pid){
+  const player=G.players.find(p=>p.id===pid)||G.squad.find(p=>p&&p.id===pid)||G.bench.find(p=>p.id===pid);
+  document.querySelectorAll('.pspot[data-slot]').forEach(el=>{
+    const idx=+el.dataset.slot;
+    const ok=isValidSlotForPlayer(player,idx);
+    el.classList.toggle('slot-valid',ok);
+    el.classList.toggle('slot-invalid',!ok);
+  });
+}
+function slotDragOver(e,targetIdx){
+  e.preventDefault();
+  const player=getDraggedPlayer();
+  e.currentTarget.classList.add('drag-over');
+  e.dataTransfer.dropEffect=isValidSlotForPlayer(player,targetIdx)?'move':'none';
+}
+function benchDragOver(e){
+  e.preventDefault();
+  const row=e.currentTarget.querySelector?.('.bench-row')||e.currentTarget;
+  row.classList.add('drop-zone');
+  e.dataTransfer.dropEffect='move';
+}
 function dropOnSlot(e,targetIdx){
-  e.preventDefault();document.querySelectorAll('.pspot').forEach(el=>el.classList.remove('drag-over'));
+  e.preventDefault();clearTacticHighlights();
   if(!_dragData.pid)return;
-  const player=G.players.find(p=>p.id===_dragData.pid)||G.bench.find(p=>p.id===_dragData.pid);
+  const player=getDraggedPlayer();
   if(!player)return;
+  if(!isValidSlotForPlayer(player,targetIdx)){
+    toast(`${player.position} nao encaixa em ${slotPosition(targetIdx)}`,'err');
+    _dragData={};
+    return;
+  }
   // Remove from wherever
   if(_dragData.from==='squad'){const old=G.squad[targetIdx];G.squad[targetIdx]=G.squad[_dragData.idx];G.squad[_dragData.idx]=old;}
   else if(_dragData.from==='bench'){
@@ -1535,16 +1621,35 @@ function dropOnSlot(e,targetIdx){
     G.players=G.players.filter(p=>p.id!==player.id);
     if(old&&!G.squad.includes(old)&&!G.bench.find(p=>p.id===old.id))G.bench.push(old);
   }
-  save();nav('tactics');
+  save();toast(`${player.name} posicionado em ${slotPosition(targetIdx)}`);nav('tactics');
 }
 function dropOnField(e){
   e.preventDefault();
   if(!_dragData.pid)return;
-  const player=G.players.find(p=>p.id===_dragData.pid);
+  const player=getDraggedPlayer();
   if(!player)return;
   if(!G.squad.find(p=>p.id===player.id)&&G.squad.length<FORMATIONS[G.formation].rows.flat().length){
-    G.squad.push(player);save();nav('tactics');
+    const idx=firstValidEmptySlot(player);
+    if(idx>=0){G.squad[idx]=player;save();toast(`${player.name} escalado!`);nav('tactics');}
+    else toast(`Sem posicao valida livre para ${player.position}`,'err');
   }
+}
+function dropOnBench(e){
+  e.preventDefault();clearTacticHighlights();
+  const player=getDraggedPlayer();
+  if(!player)return;
+  if(_dragData.from==='squad'){
+    G.squad[_dragData.idx]=undefined;
+    if(!G.bench.find(p=>p.id===player.id))G.bench.unshift(player);
+    G.bench=G.bench.slice(0,12);
+    save();toast(`${player.name} movido para o banco`);nav('tactics');
+  }
+  _dragData={};
+}
+function firstValidEmptySlot(player){
+  const slots=FORMATIONS[G.formation].rows.flat();
+  for(let i=0;i<slots.length;i++)if(!G.squad[i]&&isValidSlotForPlayer(player,i))return i;
+  return -1;
 }
 
 // ── SQUAD PAGE ─────────────────────────────────────────────
@@ -1701,6 +1806,9 @@ function renderLeague(){
   return`<div class="page-hdr">
     <div><div class="page-title">🏆 ${G.league.name}</div><div class="page-sub">${played.length} jogos disputados</div></div>
     <div class="flex-row">
+      <select class="filter-select" onchange="changeCareerLeague(this.value)">
+        ${Object.keys(LEAGUES_DATA).map(l=>`<option value="${l}" ${G.league.name===l?'selected':''}>${l}</option>`).join('')}
+      </select>
       <button class="btn btn-green btn-sm" onclick="doPlayLeagueGame()">▶ Jogar</button>
       <button class="btn btn-ghost btn-sm" onclick="simulateLeagueRound();save();nav('league')">⏭ Simular Rodada AI</button>
     </div>
@@ -1761,7 +1869,28 @@ function renderLeague(){
 function startLeague(){
   const sel=document.getElementById('leagueSel');
   const name=sel?sel.value:'Brasileirão';
+  selectLeagueMode(name);
   initLeague(name);save();nav('league');toast(`🏆 ${name} iniciado!`);
+}
+
+function selectLeagueMode(leagueName){
+  if(!LEAGUES_DATA[leagueName])return null;
+  G.career=G.career||{league:leagueName,canMoveLeague:true,history:[]};
+  if(G.career.league!==leagueName){
+    G.career.history=[...(G.career.history||[]),{season:G.season,from:G.career.league,to:leagueName}].slice(-12);
+  }
+  G.career.league=leagueName;
+  G.league.name=leagueName;
+  return LEAGUES_DATA[leagueName];
+}
+
+function changeCareerLeague(leagueName){
+  if(!LEAGUES_DATA[leagueName]||leagueName===G.league.name)return;
+  selectLeagueMode(leagueName);
+  initLeague(leagueName);
+  save();
+  toast(`Carreira movida para ${leagueName}`);
+  nav('league');
 }
 
 function doPlayLeagueGame(){
@@ -2298,6 +2427,12 @@ function showClubSetup(){
   </div>
   <div class="mb-2">
     <div class="very-small muted mb-1">Orçamento Inicial</div>
+    <select class="setup-input" id="careerLeagueInput" onchange="selectLeagueMode(this.value)">
+      ${Object.keys(LEAGUES_DATA).map(l=>`<option value="${l}" ${((G.career?.league||G.league?.name)===l)?'selected':''}>${LEAGUES_DATA[l].country} ${l}</option>`).join('')}
+    </select>
+  </div>
+  <div class="mb-2">
+    <div class="very-small muted mb-1">Orcamento Inicial</div>
     <select class="setup-input" id="budgetInput">
       <option value="20000000">€20M — Desafiador</option>
       <option value="50000000" ${G.club.budget===50e6?'selected':''}>€50M — Normal</option>
@@ -2306,6 +2441,8 @@ function showClubSetup(){
     </select>
   </div>
   <button class="btn btn-green btn-lg" style="width:100%" onclick="saveClubSetup()">✅ Confirmar</button>`;
+  const careerLeagueInput=document.getElementById('careerLeagueInput');
+  if(careerLeagueInput?.previousElementSibling)careerLeagueInput.previousElementSibling.textContent='Liga Inicial / Modo Carreira';
   openModal('overlaySetup');
 }
 
@@ -2314,6 +2451,11 @@ function saveClubSetup(){
   G.club.name=document.getElementById('clubNameInput').value||G.club.name;
   G.club.badge=_setupBadge||G.club.badge;
   G.club.color=_setupColor||G.club.color;
+  const leagueInput=document.getElementById('careerLeagueInput');
+  if(leagueInput){
+    selectLeagueMode(leagueInput.value);
+    if(!G.league.started)initLeague(leagueInput.value);
+  }
   const bv=document.getElementById('budgetInput');
   if(bv)G.club.budget=+bv.value;
   _setupBadge=G.club.badge;_setupColor=G.club.color;
@@ -2388,9 +2530,34 @@ startup();
 
 <script>
 document.addEventListener('DOMContentLoaded',()=>{
- const b=document.getElementById('startCareerBtn');
- if(b){b.onclick=()=>document.getElementById('introOverlay').remove();}
+ playCinematicIntro();
 });
+let _introTimer=null;
+function playCinematicIntro(){
+ const overlay=document.getElementById('introOverlay');
+ const line=document.getElementById('cinematicLine');
+ const btn=document.getElementById('startCareerBtn');
+ const lines=[
+  'Voce nao apenas gerencia um time...',
+  'Voce constroi uma historia.',
+  'Escolha sua liga. Defina seu destino.'
+ ];
+ let i=0;
+ const show=()=>{
+  if(!overlay||!line)return;
+  line.classList.remove('show');
+  setTimeout(()=>{line.textContent=lines[i%lines.length];line.classList.add('show');i++;},180);
+ };
+ show();
+ _introTimer=setInterval(show,1900);
+ if(btn)btn.onclick=skipCinematicIntro;
+ setTimeout(()=>{if(overlay&&!overlay.classList.contains('hide'))skipCinematicIntro();},7600);
+}
+function skipCinematicIntro(){
+ const overlay=document.getElementById('introOverlay');
+ if(_introTimer)clearInterval(_introTimer);
+ if(overlay){overlay.classList.add('hide');setTimeout(()=>overlay.remove(),850);}
+}
 </script>
 </body>
 
