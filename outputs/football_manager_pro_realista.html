@@ -91,6 +91,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .pspot.slot-invalid .pavatar{border-color:var(--red)!important;box-shadow:0 0 0 3px rgba(239,68,68,.16),0 0 18px rgba(239,68,68,.72)}
 .pspot.slot-valid:after,.pspot.slot-invalid:after{content:attr(data-role);position:absolute;top:-18px;background:rgba(2,6,23,.9);border:1px solid var(--border2);border-radius:6px;padding:2px 6px;font-size:.55rem;font-weight:800;white-space:nowrap;color:#fff}
 .pspot.slot-valid:after{color:#86efac}.pspot.slot-invalid:after{color:#fca5a5}
+.pspot.dragging{transform:scale(1.1);filter:brightness(1.18)}
+.pspot.tap-selected .pavatar{border-color:var(--accent)!important;box-shadow:0 0 0 3px rgba(245,158,11,.2),0 0 18px rgba(245,158,11,.65)}
 .pavatar{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;border:2px solid rgba(255,255,255,.2);transition:.2s;flex-shrink:0;position:relative;overflow:hidden}
 .pavatar.filled{border-color:var(--green)}
 .pavatar.empty{border-color:rgba(255,255,255,.15);border-style:dashed}
@@ -1293,7 +1295,7 @@ function autoFill(){
 }
 
 function getCompat(pos){
-  const c={GOL:['GOL'],ZAG:['ZAG'],LE:['LE','LD'],LD:['LD','LE'],VOL:['VOL','MC'],MC:['MC','VOL','MEI'],MEI:['MEI','MC'],PE:['PE','PD'],PD:['PD','PE'],SA:['SA','ATA'],ATA:['ATA','SA']};
+  const c={GOL:['GOL'],ZAG:['ZAG','LE','LD'],LE:['ZAG','LE','LD'],LD:['ZAG','LE','LD'],VOL:['MC','VOL','MEI'],MC:['MC','VOL','MEI'],MEI:['MC','VOL','MEI'],PE:['PE','PD','ATA','SA'],PD:['PE','PD','ATA','SA'],SA:['PE','PD','ATA','SA'],ATA:['PE','PD','ATA','SA']};
   return c[pos]||[pos];
 }
 
@@ -1459,7 +1461,7 @@ function renderTactics(){
           ondragover="slotDragOver(event,${idx})"
           ondragleave="this.classList.remove('drag-over')"
           ondrop="dropOnSlot(event,${idx})"
-          onclick="openPlayer(${player.id})">
+          onclick="tapTacticSlot(event,${idx},${player.id})">
           <div class="pavatar filled ${inj?'injured':sus?'booked':''}" style="background:${posC}22;border-color:${inj?'var(--red)':sus?'var(--accent)':posC}">
             <span style="color:${posC}">${initials(player.name)}</span>
             <div class="p-ovr" style="color:${ovrColor(player.overall)}">${player.overall}</div>
@@ -1471,7 +1473,8 @@ function renderTactics(){
         return`<div class="pspot" data-slot="${idx}" data-role="${slot.p}" title="Ideal: ${slot.p}"
           ondragover="slotDragOver(event,${idx})"
           ondragleave="this.classList.remove('drag-over')"
-          ondrop="dropOnSlot(event,${idx})">
+          ondrop="dropOnSlot(event,${idx})"
+          onclick="tapTacticSlot(event,${idx})">
           <div class="pavatar empty" style="border-color:${posC}44">
             <span style="color:${posC}66;font-size:.55rem">${slot.p}</span>
           </div>
@@ -1555,15 +1558,17 @@ function renderTactics(){
 
 // Drag & Drop
 let _dragData={};
+let _tapSwapSlot=null;
 function enableDragAndDropTactics(){clearTacticHighlights();}
 function dragStart(e,pid,from,idx){
   _dragData={pid,from,idx};
+  e.currentTarget?.classList.add('dragging');
   e.dataTransfer.effectAllowed='move';
   e.dataTransfer.setData('text/plain',String(pid));
   highlightValidSlots(pid);
 }
 function clearTacticHighlights(){
-  document.querySelectorAll('.pspot').forEach(el=>el.classList.remove('drag-over','slot-valid','slot-invalid'));
+  document.querySelectorAll('.pspot').forEach(el=>el.classList.remove('drag-over','slot-valid','slot-invalid','dragging'));
   document.querySelectorAll('.bench-row').forEach(el=>el.classList.remove('drop-zone'));
 }
 function getDraggedPlayer(){
@@ -1572,9 +1577,21 @@ function getDraggedPlayer(){
 function slotPosition(idx){
   return FORMATIONS[G.formation].rows.flat()[idx]?.p;
 }
+function tacticalGroup(pos){
+  if(pos==='GOL')return'GOL';
+  if(['ZAG','LE','LD'].includes(pos))return'DEF';
+  if(['MC','VOL','MEI'].includes(pos))return'MID';
+  if(['PE','PD','ATA','SA'].includes(pos))return'ATK';
+  return pos;
+}
+function validatePosition(playerPos,slotPos){
+  if(!playerPos||!slotPos)return false;
+  if(slotPos==='GOL')return playerPos==='GOL';
+  return tacticalGroup(playerPos)===tacticalGroup(slotPos);
+}
 function isValidSlotForPlayer(player,idx){
   const pos=slotPosition(idx);
-  return !!(player&&pos&&getCompat(pos).includes(player.position));
+  return !!(player&&pos&&validatePosition(player.position,pos));
 }
 function highlightValidSlots(pid){
   const player=G.players.find(p=>p.id===pid)||G.squad.find(p=>p&&p.id===pid)||G.bench.find(p=>p.id===pid);
@@ -1602,26 +1619,7 @@ function dropOnSlot(e,targetIdx){
   if(!_dragData.pid)return;
   const player=getDraggedPlayer();
   if(!player)return;
-  if(!isValidSlotForPlayer(player,targetIdx)){
-    toast(`${player.position} nao encaixa em ${slotPosition(targetIdx)}`,'err');
-    _dragData={};
-    return;
-  }
-  // Remove from wherever
-  if(_dragData.from==='squad'){const old=G.squad[targetIdx];G.squad[targetIdx]=G.squad[_dragData.idx];G.squad[_dragData.idx]=old;}
-  else if(_dragData.from==='bench'){
-    const old=G.squad[targetIdx];
-    G.squad[targetIdx]=player;
-    G.bench=G.bench.filter(p=>p.id!==player.id);
-    if(old)G.bench.push(old);
-  }
-  else{
-    const old=G.squad[targetIdx];
-    G.squad[targetIdx]=player;
-    G.players=G.players.filter(p=>p.id!==player.id);
-    if(old&&!G.squad.includes(old)&&!G.bench.find(p=>p.id===old.id))G.bench.push(old);
-  }
-  save();toast(`${player.name} posicionado em ${slotPosition(targetIdx)}`);nav('tactics');
+  handleDrop(player,targetIdx);
 }
 function dropOnField(e){
   e.preventDefault();
@@ -1650,6 +1648,82 @@ function firstValidEmptySlot(player){
   const slots=FORMATIONS[G.formation].rows.flat();
   for(let i=0;i<slots.length;i++)if(!G.squad[i]&&isValidSlotForPlayer(player,i))return i;
   return -1;
+}
+
+function resolveSquadIndex(ref){
+  if(typeof ref==='number')return ref;
+  return G.squad.findIndex(p=>p&&ref&&p.id===ref.id);
+}
+function swapPlayers(p1,p2){
+  const i=resolveSquadIndex(p1),j=resolveSquadIndex(p2);
+  if(i<0||j<0||i===j)return false;
+  const moving=G.squad[i],target=G.squad[j];
+  if(!validatePosition(moving?.position,slotPosition(j))||!validatePosition(target?.position,slotPosition(i)))return false;
+  G.squad[i]=target;
+  G.squad[j]=moving;
+  return true;
+}
+function handleDrop(player,targetSlot){
+  const slotPos=slotPosition(targetSlot);
+  if(!validatePosition(player.position,slotPos)){
+    toast(`${player.position} nao encaixa em ${slotPos}`,'err');
+    flashSlot(targetSlot,false);
+    _dragData={};
+    return false;
+  }
+  const current=G.squad[targetSlot];
+  if(_dragData.from==='squad'){
+    if(current&&current.id!==player.id){
+      if(!swapPlayers(_dragData.idx,targetSlot)){
+        toast('Troca invalida pela posicao do outro jogador','err');
+        flashSlot(targetSlot,false);
+        _dragData={};
+        return false;
+      }
+    }else{
+      G.squad[_dragData.idx]=undefined;
+      G.squad[targetSlot]=player;
+    }
+  }else if(_dragData.from==='bench'){
+    G.bench=G.bench.filter(p=>p.id!==player.id);
+    G.squad[targetSlot]=player;
+    if(current&&!G.bench.find(p=>p.id===current.id))G.bench.unshift(current);
+  }else{
+    G.squad[targetSlot]=player;
+    if(current&&!G.bench.find(p=>p.id===current.id))G.bench.unshift(current);
+  }
+  G.bench=G.bench.filter((p,i,a)=>p&&a.findIndex(x=>x.id===p.id)===i).slice(0,12);
+  flashSlot(targetSlot,true);
+  save();updateTopbar();toast(`${player.name} em ${slotPos}`);nav('tactics');
+  _dragData={};
+  return true;
+}
+function flashSlot(idx,ok){
+  const el=document.querySelector(`.pspot[data-slot="${idx}"]`);
+  if(!el)return;
+  el.classList.add(ok?'slot-valid':'slot-invalid');
+  setTimeout(()=>el.classList.remove('slot-valid','slot-invalid'),450);
+}
+function tapTacticSlot(e,idx,pid){
+  e.stopPropagation();
+  const player=G.squad[idx];
+  if(_tapSwapSlot===null){
+    if(!player)return;
+    _tapSwapSlot=idx;
+    document.querySelectorAll('.pspot').forEach(el=>el.classList.remove('tap-selected'));
+    e.currentTarget.classList.add('tap-selected');
+    highlightValidSlots(player.id);
+    toast('Toque em outra posicao para mover ou trocar');
+    return;
+  }
+  const source=_tapSwapSlot;
+  const moving=G.squad[source];
+  document.querySelectorAll('.pspot').forEach(el=>el.classList.remove('tap-selected'));
+  clearTacticHighlights();
+  _tapSwapSlot=null;
+  if(source===idx){if(pid)openPlayer(pid);return;}
+  _dragData={pid:moving?.id,from:'squad',idx:source};
+  if(moving)handleDrop(moving,idx);
 }
 
 // ── SQUAD PAGE ─────────────────────────────────────────────
