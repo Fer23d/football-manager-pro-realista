@@ -532,6 +532,8 @@ let G={
   form:[],
   news:[],
   transferInbox:[],
+  transferNegotiations:[],
+  contractNegotiations:[],
   liveScores:[],
   liveMatches:[],
   managerProfile:{reputation:45,careerLevel:'iniciante',titlesWon:0,winRate:0,jobOffers:[]},
@@ -597,6 +599,8 @@ function createPlayer(overrides={}){
   const value=Math.round(overall*overall*600+rnd(-200000,200000));
   const salary=Math.round(value*0.06/12);
   const contractYears=overrides.contractYears||rnd(1,5);
+  const contractClub=overrides.contractClub||overrides.club||club;
+  const contractStatus=overrides.contractStatus||(contractClub&&contractClub!=='Livre'?'active':'free');
   const demand=overrides.demand||clamp(Math.round(40+(overall-60)*1.2+rnd(-10,18)),10,95);
   const numSpecs=rnd(0,Math.min(3,Math.floor(overall/30)));
   const specs=[];const sp=[...SPECIALTIES];
@@ -605,8 +609,8 @@ function createPlayer(overrides={}){
   const initialFitness=rnd(70,100);
   const p={
     id,name,firstName,lastName,age,nationality:nat,club,position:pos,
-    overall,potential,valorMercado:value,value,playerValue:value,salario:salary,
-    contract:{years:contractYears,salary,expiresSeason:G.season+contractYears},
+    overall,potential,valorMercado:value,value,playerValue:value,marketValue:value,transferValue:value,salaryDemand:salary,salario:salary,
+    contract:{club:contractClub,salary,duration:contractYears,years:contractYears,endDate:G.season+contractYears,expiresSeason:G.season+contractYears,status:contractStatus},
     demand,transferOffers:[],loanListed:false,wantsOut:false,
     moral:initialMorale,morale:initialMorale,condicionamento:initialFitness,fatigue:100-initialFitness,experience:rnd(0,120),developmentPotential:potential,lesao:null,
     habilidades:generateSkills(pos,overall),
@@ -1297,7 +1301,7 @@ function nextSeason(){
     if(G.injuries[id].weeksLeft<=0){delete G.injuries[id];const p=G.players.find(x=>x.id===+id);if(p)events.push({type:'pos',text:`💚 ${p.name} se recuperou da lesão!`});}
   });
   // Fresh market
-  const newMkt=[];for(let i=0;i<60;i++)newMkt.push(createPlayer({overall:rnd(55,92)}));
+  const newMkt=[];for(let i=0;i<60;i++)newMkt.push(createMarketPlayer());
   G.market=[...G.market.slice(-40),...newMkt];
   G.players.forEach(p=>{
     normalizeMarketPlayer(p);
@@ -1338,6 +1342,8 @@ function getCompat(pos){
 function normalizeCareerSystems(){
   G.news=G.news||[];
   G.transferInbox=G.transferInbox||[];
+  G.transferNegotiations=G.transferNegotiations||[];
+  G.contractNegotiations=G.contractNegotiations||[];
   G.liveScores=G.liveScores||[];
   G.liveMatches=G.liveMatches||[];
   G.managerProfile=G.managerProfile||{reputation:G.coach?.reputation||45,careerLevel:'iniciante',titlesWon:G.coach?.titles?.length||0,winRate:0,jobOffers:[]};
@@ -1350,16 +1356,68 @@ function normalizeCareerSystems(){
 
 function normalizeMarketPlayer(p){
   if(!p)return p;
-  p.value=p.value||p.valorMercado||p.playerValue||0;
-  p.playerValue=p.value;
-  p.valorMercado=p.valorMercado||p.value;
-  p.contract=p.contract||{years:rnd(1,5),salary:p.salario||Math.round((p.value||1e6)*0.06/12),expiresSeason:G.season+rnd(1,5)};
-  p.salario=p.salario||p.contract.salary;
+  p.contract=p.contract||{club:p.club||'Livre',salary:p.salario||0,duration:rnd(1,5),endDate:G.season+rnd(1,5),status:(p.club&&p.club!=='Livre')?'active':'free'};
+  if(p.contract.years&&!p.contract.duration)p.contract.duration=p.contract.years;
+  if(p.contract.expiresSeason&&!p.contract.endDate)p.contract.endDate=p.contract.expiresSeason;
+  p.contract.club=p.contract.club||p.club||'Livre';
+  p.contract.status=p.contract.status||((p.contract.club&&p.contract.club!=='Livre')?'active':'free');
+  p.contract.salary=p.contract.salary||p.salario||0;
+  p.club=p.contract.club==='Livre'?'Livre':(p.club||p.contract.club);
+  const marketValue=calculateMarketValue(p);
+  p.marketValue=marketValue;
+  p.value=marketValue;
+  p.playerValue=marketValue;
+  p.valorMercado=marketValue;
+  p.transferValue=calculateTransferValue(p);
+  p.salaryDemand=calculateSalaryDemand(p);
+  p.salario=p.salario||p.contract.salary||Math.round(p.salaryDemand*.8);
   p.demand=p.demand??clamp(Math.round(40+((p.overall||60)-60)*1.1+rnd(-8,15)),10,95);
   p.transferOffers=p.transferOffers||[];
+  p.decisionWeight=p.decisionWeight||{salary:.38,clubReputation:.22,playingTime:.28,contractLength:.12};
   p.loanListed=!!p.loanListed;
   p.wantsOut=!!p.wantsOut;
   return p;
+}
+
+function calculateMarketValue(player){
+  if(!player)return 0;
+  const o=player.overall||60,pot=player.potential||o,age=player.age||25;
+  const stats=G.playerStats?.[player.id]||{};
+  const moraleDelta=(player.morale??player.moral??70)-70;
+  const formBoost=1+clamp((stats.goals||0)*.025+(stats.assists||0)*.018+moraleDelta/500,-.18,.35);
+  const ageCurve=age<=21?1.18:age<=24?1.28:age<=29?1.14:age<=32?.88:.58;
+  const potentialBoost=1+clamp((pot-o)/55,0,.38);
+  const base=Math.pow(o,3)*115;
+  return Math.max(50000,Math.round(base*ageCurve*potentialBoost*formBoost));
+}
+
+function calculateTransferValue(player){
+  const market=calculateMarketValue(player);
+  if(isFreeAgent(player))return 0;
+  const years=Math.max(0,(player.contract?.endDate||G.season)-G.season);
+  const contractMult=years>=4?1.35:years>=3?1.22:years>=2?1.08:years>=1?.82:.35;
+  const unhappy=player.wantsOut?.82:1;
+  return Math.round(market*contractMult*unhappy);
+}
+
+function calculateSalaryDemand(player){
+  const market=calculateMarketValue(player);
+  const star=(player.overall||60)>=80?1.35:1;
+  const age=(player.age||25)<23?.88:(player.age||25)>32?.82:1;
+  return Math.round((market*.055/12)*star*age);
+}
+
+function isFreeAgent(player){
+  return !player.contract||player.contract.status==='free'||player.contract.club==='Livre'||(player.contract.endDate||G.season)>0&&player.contract.endDate<=G.season;
+}
+
+function canBeFreeAgent(player){
+  if((player.overall||0)<70)return true;
+  if((player.contract?.endDate||G.season+1)<=G.season)return true;
+  if(player.releasedReason)return true;
+  if((player.age||25)>=34&&player.overall<82)return true;
+  if(player.wantsOut&&Math.random()<.08)return true;
+  return false;
 }
 
 function enforceSquadLimits(){
@@ -1474,6 +1532,96 @@ function counterTransferOffer(offerId){
   save();nav(_curPage);
 }
 
+function startTransferNegotiation(playerId,offerValue=null){
+  const player=G.market.find(x=>x.id===playerId)||G.players.find(x=>x.id===playerId);
+  if(!player)return null;
+  normalizeMarketPlayer(player);
+  const buyingClub=G.club.name;
+  const sellingClub=isFreeAgent(player)?'Livre':(player.contract?.club||player.club);
+  const targetValue=isFreeAgent(player)?0:(player.transferValue||calculateTransferValue(player));
+  const initialOffer=offerValue??(isFreeAgent(player)?0:Math.round(targetValue*rnd(82,96)/100));
+  if(initialOffer>G.club.budget){toast('Orcamento insuficiente para proposta','err');return null;}
+  const negotiation={id:Date.now()+rnd(100,9999),playerId:player.id,player:player.name,buyingClub,sellingClub,offerValue:initialOffer,counterOffer:null,status:'club_pending',createdSeason:G.season};
+  G.transferNegotiations=[negotiation,...(G.transferNegotiations||[])].slice(0,20);
+  const sellerAcceptance=isFreeAgent(player)||initialOffer>=targetValue*.92||player.wantsOut&&initialOffer>=targetValue*.78;
+  if(sellerAcceptance){
+    negotiation.status='club_accepted';
+    addNews(`${sellingClub} aceita negociar ${player.name} com ${buyingClub}`,'transfer');
+    startContractNegotiation(negotiation.id);
+  }else if(initialOffer>=targetValue*.75){
+    negotiation.counterOffer=Math.round(targetValue*rnd(103,118)/100);
+    negotiation.status='countered';
+    addNews(`${sellingClub} faz contra-proposta por ${player.name}: ${fmtM(negotiation.counterOffer)}`,'transfer');
+  }else{
+    negotiation.status='rejected';
+    addNews(`${sellingClub} recusa proposta por ${player.name}`,'transfer');
+  }
+  save();nav('market');
+  return negotiation;
+}
+
+function makeCounterOffer(negotiationId,value=null){
+  const n=G.transferNegotiations.find(x=>x.id===negotiationId);if(!n)return;
+  const p=G.market.find(x=>x.id===n.playerId)||G.players.find(x=>x.id===n.playerId);if(!p)return;
+  const offer=value||n.counterOffer||Math.round(calculateTransferValue(p)*1.05);
+  if(offer>G.club.budget){toast('Orcamento insuficiente','err');return;}
+  n.offerValue=offer;n.status='club_accepted';
+  startContractNegotiation(n.id);
+  addNews(`${G.club.name} aceita contraproposta por ${p.name}`,'transfer');
+  save();nav('market');
+}
+
+function startContractNegotiation(transferNegotiationId){
+  const n=G.transferNegotiations.find(x=>x.id===transferNegotiationId);if(!n)return null;
+  const p=G.market.find(x=>x.id===n.playerId)||G.players.find(x=>x.id===n.playerId);if(!p)return null;
+  normalizeMarketPlayer(p);
+  const demand=p.salaryDemand||calculateSalaryDemand(p);
+  const cn={id:Date.now()+rnd(100,9999),transferId:n.id,playerId:p.id,player:p.name,salaryOffer:Math.round(demand*.9),salaryDemand:demand,contractLength:p.age<24?4:p.age>31?2:3,signingBonus:Math.round(demand*2.5),squadStatus:p.overall>=78?'titular':'reserva',playerSatisfaction:0,status:'player_pending'};
+  cn.playerSatisfaction=evaluateContractOffer(p,cn);
+  G.contractNegotiations=[cn,...(G.contractNegotiations||[])].slice(0,20);
+  return cn;
+}
+
+function evaluateContractOffer(player,contract){
+  const salaryScore=clamp(contract.salaryOffer/(contract.salaryDemand||1),0,1.4)*42;
+  const repScore=clamp((G.managerProfile?.reputation||45)/100,0,1)*18;
+  const timeScore=(contract.squadStatus==='titular'?26:contract.squadStatus==='rotacao'?18:10);
+  const lengthIdeal=player.age>31?2:player.age<24?4:3;
+  const lengthScore=clamp(1-Math.abs(contract.contractLength-lengthIdeal)/4,0,1)*14;
+  return Math.round(salaryScore+repScore+timeScore+lengthScore);
+}
+
+function negotiateContract(contractNegotiationId,changes={}){
+  const c=G.contractNegotiations.find(x=>x.id===contractNegotiationId);if(!c)return;
+  Object.assign(c,changes);
+  const p=G.market.find(x=>x.id===c.playerId)||G.players.find(x=>x.id===c.playerId);if(!p)return;
+  c.playerSatisfaction=evaluateContractOffer(p,c);
+  if(c.playerSatisfaction>=78)c.status='accepted';
+  else if(c.playerSatisfaction<55){c.status='countered';c.salaryDemand=Math.round(c.salaryDemand*1.08);c.signingBonus=Math.round(c.signingBonus*1.2);}
+  save();nav('market');
+  return c;
+}
+
+function finalizeTransfer(contractNegotiationId){
+  const c=G.contractNegotiations.find(x=>x.id===contractNegotiationId);if(!c)return;
+  const n=G.transferNegotiations.find(x=>x.id===c.transferId);if(!n)return;
+  const p=G.market.find(x=>x.id===c.playerId);if(!p)return;
+  c.playerSatisfaction=evaluateContractOffer(p,c);
+  if(c.playerSatisfaction<72){toast('Jogador recusou o contrato','err');c.status='rejected';save();nav('market');return;}
+  const totalCost=(n.offerValue||0)+(c.signingBonus||0);
+  if(G.players.length>=MAX_MAIN_PLAYERS){toast('Elenco principal cheio (25)','err');return;}
+  if(G.club.budget<totalCost){toast('Orcamento insuficiente para transferencia + luvas','err');return;}
+  G.club.budget-=totalCost;
+  p.club=G.club.name;
+  p.contract={club:G.club.name,salary:c.salaryOffer,duration:c.contractLength,years:c.contractLength,endDate:G.season+c.contractLength,expiresSeason:G.season+c.contractLength,status:'active',squadStatus:c.squadStatus};
+  p.salario=c.salaryOffer;p.salaryDemand=c.salaryDemand;p.wantsOut=false;
+  G.players.push(p);G.market=G.market.filter(x=>x.id!==p.id);
+  n.status='completed';c.status='completed';
+  if(!G.playerStats[p.id])G.playerStats[p.id]={goals:0,assists:0,games:0,minutes:0,yellows:0,reds:0,notes:[]};
+  addNews(`${G.club.name} fecha com ${p.name} por ${fmtM(n.offerValue||0)} + luvas ${fmtM(c.signingBonus||0)}`,'transfer');
+  enforceSquadLimits();save();updateTopbar();nav('market');
+}
+
 function renewContract(id){
   const p=G.players.find(x=>x.id===id);if(!p)return;
   const salary=Math.round((p.salario||10000)*(1+(p.demand||50)/180));
@@ -1489,7 +1637,8 @@ function renewContract(id){
 function loanMarketPlayer(id){
   const p=G.market.find(x=>x.id===id);if(!p)return;
   if(G.players.length>=MAX_MAIN_PLAYERS){toast('Elenco principal cheio (25)','err');return;}
-  const fee=Math.round((p.value||p.valorMercado)*.12);
+  if(isFreeAgent(p)){toast('Jogador livre nao precisa de emprestimo','err');return;}
+  const fee=Math.round((p.transferValue||p.valorMercado)*.12);
   if(G.club.budget<fee){toast('Orcamento insuficiente para emprestimo','err');return;}
   G.club.budget-=fee;p.loanUntil=G.season+1;p.club=G.club.name;
   G.players.push(p);G.market=G.market.filter(x=>x.id!==id);
@@ -1549,7 +1698,7 @@ function simulateTVModeRound(excludeFixture=null){
 function save(){
   try{
     normalizeCareerSystems();
-    const data={...G,players:G.players.slice(0,MAX_MAIN_PLAYERS),baseYouth:G.baseYouth.slice(0,MAX_YOUTH_PLAYERS),market:G.market.slice(0,120),news:G.news.slice(0,40),transferInbox:G.transferInbox.slice(0,20),liveScores:G.liveScores.slice(0,8),liveMatches:G.liveMatches.slice(0,8),managerProfile:G.managerProfile};
+    const data={...G,players:G.players.slice(0,MAX_MAIN_PLAYERS),baseYouth:G.baseYouth.slice(0,MAX_YOUTH_PLAYERS),market:G.market.slice(0,120),news:G.news.slice(0,40),transferInbox:G.transferInbox.slice(0,20),transferNegotiations:G.transferNegotiations.slice(0,20),contractNegotiations:G.contractNegotiations.slice(0,20),liveScores:G.liveScores.slice(0,8),liveMatches:G.liveMatches.slice(0,8),managerProfile:G.managerProfile};
     localStorage.setItem('fmpro_v5',JSON.stringify(data));
   }catch(e){}
 }
@@ -1636,6 +1785,23 @@ function renderTransferInbox(limit=8){
       <button class="btn btn-ghost btn-sm" onclick="rejectTransferOffer(${o.id})">Recusar</button>
     </div>
   </div>`).join('');
+}
+
+function renderNegotiationCenter(limit=6){
+  const transfers=(G.transferNegotiations||[]).filter(n=>['countered','club_accepted'].includes(n.status)).slice(0,limit);
+  const contracts=(G.contractNegotiations||[]).filter(c=>['player_pending','countered','accepted'].includes(c.status)).slice(0,limit);
+  const tHtml=transfers.map(n=>`<div class="small mb-1" style="border-bottom:1px solid var(--border);padding-bottom:6px">
+    <b>${n.player}</b> - ${n.sellingClub} | Oferta: ${fmtM(n.offerValue||0)} ${n.counterOffer?`| Contra: ${fmtM(n.counterOffer)}`:''}
+    ${n.status==='countered'?`<button class="btn btn-accent btn-sm" onclick="makeCounterOffer(${n.id})">Aceitar contra</button>`:''}
+  </div>`).join('');
+  const cHtml=contracts.map(c=>`<div class="small mb-1" style="border-bottom:1px solid var(--border);padding-bottom:6px">
+    <b>${c.player}</b> | Salario: ${fmtM(c.salaryOffer)} / pede ${fmtM(c.salaryDemand)} | ${c.contractLength} anos | Sat. ${c.playerSatisfaction}%
+    <div class="flex-row mt-1" style="gap:4px">
+      <button class="btn btn-blue btn-sm" onclick="negotiateContract(${c.id},{salaryOffer:Math.round(${c.salaryOffer}*1.12),signingBonus:Math.round(${c.signingBonus}*1.1)});">Melhorar</button>
+      <button class="btn btn-green btn-sm" onclick="finalizeTransfer(${c.id})">Finalizar</button>
+    </div>
+  </div>`).join('');
+  return (tHtml||cHtml)?`${tHtml}${cHtml}`:'<div class="small muted">Nenhuma negociacao aberta.</div>';
 }
 
 function renderNewsFeed(limit=8){
@@ -2397,6 +2563,10 @@ function renderMarket(){
     <div class="card-hdr">Propostas de clubes AI</div>
     ${renderTransferInbox(6)}
   </div>
+  <div class="card mb-2">
+    <div class="card-hdr">Central de negociacao</div>
+    ${renderNegotiationCenter(6)}
+  </div>
   <div class="filters">
     <input class="filter-input" placeholder="🔍 Buscar..." value="${f.q}" oninput="_marketFilter.q=this.value;nav('market')">
     <select class="filter-select" onchange="_marketFilter.pos=this.value;nav('market')">
@@ -2420,13 +2590,13 @@ function renderMarket(){
         <span class="badge b-ovr" style="color:${ovrColor(p.overall)};background:${ovrColor(p.overall)}22">⭐${p.overall}</span>
       </div>
       <div class="pcard-stats">
-        <div class="pstat">Valor: <b style="color:var(--green)">${fmtM(p.valorMercado)}</b></div>
-        <div class="pstat">Salário: <b>${fmtM(p.salario)}</b></div>
+        <div class="pstat">Valor: <b style="color:var(--green)">${isFreeAgent(p)?'Livre':fmtM(p.transferValue||p.valorMercado)}</b></div>
+        <div class="pstat">Salário pedido: <b>${fmtM(p.salaryDemand||p.salario)}</b></div>
         <div class="pstat">Pot: <b>${p.potential}</b></div>
         <div class="pstat">Clube: <b>${p.club}</b></div>
       </div>
       <div class="pcard-actions" onclick="event.stopPropagation()">
-        <button class="btn btn-green btn-sm" onclick="buyPlayer(${p.id})">💼 Contratar</button>
+        <button class="btn btn-green btn-sm" onclick="buyPlayer(${p.id})">${isFreeAgent(p)?'Negociar contrato':'Fazer proposta'}</button>
         <button class="btn btn-blue btn-sm" onclick="loanMarketPlayer(${p.id})">Emprestimo</button>
         <button class="btn btn-ghost btn-sm" onclick="openPlayer(${p.id})">👁 Ver</button>
       </div>
@@ -2437,22 +2607,45 @@ function renderMarket(){
 
 let _marketFilter={pos:'',q:'',minOvr:0};
 function refreshMarket(){
-  const newP=[];for(let i=0;i<40;i++)newP.push(createPlayer({overall:rnd(55,92)}));
+  const newP=[];for(let i=0;i<40;i++)newP.push(createMarketPlayer());
   G.market=[...G.market.filter(p=>!G.players.find(x=>x.id===p.id)).slice(0,60),...newP];
   save();nav('market');toast('🔄 Mercado atualizado!');
+}
+
+function createMarketPlayer(){
+  const roll=Math.random();
+  let p;
+  if(roll<.22){
+    const age=Math.random()<.55?rnd(17,21):rnd(32,37);
+    p=createPlayer({age,overall:age>31?rnd(58,74):rnd(48,68),club:'Livre',contractClub:'Livre',contractStatus:'free',contractYears:0});
+    p.releasedReason=age>31?'veterano livre':'jovem sem contrato';
+  }else if(roll<.28){
+    p=createPlayer({overall:rnd(65,78),age:rnd(24,34),club:'Livre',contractClub:'Livre',contractStatus:'free',contractYears:0});
+    p.releasedReason=pick(['baixo desempenho','rejeitou renovacao','liberado pelo clube']);
+  }else{
+    const league=pick(Object.keys(LEAGUES_DATA));
+    const club=pick(LEAGUES_DATA[league].clubs);
+    const overall=Math.random()<.18?rnd(80,91):rnd(58,79);
+    p=createPlayer({overall,age:rnd(18,34),club,contractClub:club,contractStatus:'active',contractYears:rnd(1,5)});
+  }
+  normalizeMarketPlayer(p);
+  if(isFreeAgent(p)&&!canBeFreeAgent(p)){
+    const league=pick(Object.keys(LEAGUES_DATA));const club=pick(LEAGUES_DATA[league].clubs);
+    p.club=club;p.contract={club,salary:p.salaryDemand,duration:rnd(1,4),endDate:G.season+rnd(1,4),status:'active'};
+    normalizeMarketPlayer(p);
+  }
+  return p;
 }
 
 function buyPlayer(id){
   const p=G.market.find(x=>x.id===id);if(!p)return;
   if(G.players.length>=MAX_MAIN_PLAYERS){toast('Elenco principal cheio (25)','err');return;}
-  if(G.club.budget<p.valorMercado){toast('💸 Orçamento insuficiente!','err');return;}
-  G.club.budget-=p.valorMercado;
-  G.players.push(p);
-  G.market=G.market.filter(x=>x.id!==id);
-  if(!G.playerStats[p.id])G.playerStats[p.id]={goals:0,assists:0,games:0,minutes:0,yellows:0,reds:0,notes:[]};
-  addNews(`${G.club.name} contrata ${p.name} por ${fmtM(p.valorMercado)}`,'transfer');
-  enforceSquadLimits();
-  save();updateTopbar();toast(`✅ ${p.name} contratado!`);nav('market');
+  const n=startTransferNegotiation(id);
+  if(n?.status==='club_accepted'){
+    const c=(G.contractNegotiations||[]).find(x=>x.transferId===n.id);
+    toast(c?'Clube aceitou. Negocie o contrato.':'Negociacao iniciada.');
+  }else if(n?.status==='countered')toast('Clube fez contra-proposta.');
+  else if(n?.status==='rejected')toast('Proposta recusada pelo clube.','err');
 }
 
 // ── SANDBOX ────────────────────────────────────────────────
@@ -2701,7 +2894,7 @@ function openPlayer(id){
   <div class="two-col mb-2">
     <div class="card" style="padding:10px">
       <div class="very-small muted mb-2">Ficha Técnica</div>
-      ${[['Valor',fmtM(p.valorMercado),'var(--green)'],['Salário',fmtM(p.salario),'var(--red)'],['Contrato',(p.contract?.years??'?')+' ano(s)','var(--blue3)'],['Demanda',(p.demand||50)+'%','var(--accent)'],['Moral',(p.morale??p.moral)+'%','var(--accent)'],['Cond.',p.condicionamento+'%','var(--blue3)']].map(([l,v,c])=>`<div class="flex-between small mb-1"><span class="muted">${l}</span><span style="color:${c};font-weight:700">${v}</span></div>`).join('')}
+      ${[['Valor mercado',fmtM(p.marketValue||p.valorMercado),'var(--green)'],['Valor transf.',isFreeAgent(p)?'Livre':fmtM(p.transferValue||p.valorMercado),'var(--green)'],['Salário pedido',fmtM(p.salaryDemand||p.salario),'var(--red)'],['Contrato',(p.contract?.duration??p.contract?.years??0)+' ano(s)','var(--blue3)'],['Status',p.contract?.status||'active','var(--accent)'],['Moral',(p.morale??p.moral)+'%','var(--accent)'],['Cond.',p.condicionamento+'%','var(--blue3)']].map(([l,v,c])=>`<div class="flex-between small mb-1"><span class="muted">${l}</span><span style="color:${c};font-weight:700">${v}</span></div>`).join('')}
       ${p.wantsOut?'<div class="small" style="color:var(--red)">Quer sair do clube</div>':''}
     </div>
     <div class="card" style="padding:10px">
@@ -2726,7 +2919,7 @@ function openPlayer(id){
               :`<button class="btn btn-green btn-sm" onclick="addToSquad(${id});closeModal('overlayPlayer')">+ Escalar</button>`}
       <button class="btn btn-blue btn-sm" onclick="renewContract(${id});closeModal('overlayPlayer')">Renovar</button>
       <button class="btn btn-ghost btn-sm" onclick="sellPlayerPrompt(${id});closeModal('overlayPlayer')">💰 Vender</button>`:''}
-    ${inMarket&&!inOwn?`<button class="btn btn-blue btn-sm" onclick="buyPlayer(${id});closeModal('overlayPlayer')">💼 Contratar ${fmtM(p.valorMercado)}</button><button class="btn btn-ghost btn-sm" onclick="loanMarketPlayer(${id});closeModal('overlayPlayer')">Emprestimo</button>`:''}
+    ${inMarket&&!inOwn?`<button class="btn btn-blue btn-sm" onclick="buyPlayer(${id});closeModal('overlayPlayer')">${isFreeAgent(p)?'Negociar contrato':'Fazer proposta'} ${isFreeAgent(p)?'':fmtM(p.transferValue||p.valorMercado)}</button><button class="btn btn-ghost btn-sm" onclick="loanMarketPlayer(${id});closeModal('overlayPlayer')">Emprestimo</button>`:''}
     ${!inOwn&&!inMarket?`<button class="btn btn-green btn-sm" onclick="sandboxAddToOwn(${id});closeModal('overlayPlayer')">+ Adquirir (Livre)</button>
       <button class="btn btn-ghost btn-sm" onclick="sandboxAdd(${id});closeModal('overlayPlayer')">⚽ Escalar Agora</button>`:''}
   </div>`;
@@ -2892,7 +3085,7 @@ async function startup(){
   progress(55);
   txt.textContent='Gerando mercado...';
   await delay(50);
-  G.market=Array.from({length:120},()=>createPlayer({overall:rnd(55,95)}));
+  G.market=Array.from({length:120},()=>createMarketPlayer());
   progress(65);
   txt.textContent='Preparando modo livre...';
   await delay(30);
