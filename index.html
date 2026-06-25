@@ -1669,7 +1669,7 @@ function processTransferOffers(player){
     if(result.decision==='accept'){
       finalizeAcceptedOffer(player,offer);
     }else if(result.decision==='counter'){
-      offer.status='countered';
+      offer.status='counter';
       addNews(`${G.club.name} faz contra-proposta por ${player.name}: ${fmtM(offer.counterOffer)}`,'transfer');
     }else{
       offer.status='rejected';
@@ -1689,7 +1689,7 @@ function processTransferOffersAllPlayers(){
 }
 
 function acceptTransferOffer(offerId){
-  const offer=G.transferInbox.find(o=>o.id===offerId&&['pending','countered'].includes(o.status));if(!offer)return;
+  const offer=G.transferInbox.find(o=>o.id===offerId&&['pending','counter','countered'].includes(o.status));if(!offer)return;
   const p=G.players.find(x=>x.id===offer.playerId);if(!p)return;
   if(offer.counterOffer&&offer.value<offer.counterOffer)offer.value=offer.counterOffer;
   finalizeAcceptedOffer(p,offer);
@@ -1697,7 +1697,7 @@ function acceptTransferOffer(offerId){
 }
 
 function rejectTransferOffer(offerId){
-  const offer=G.transferInbox.find(o=>o.id===offerId&&['pending','countered'].includes(o.status));if(!offer)return;
+  const offer=G.transferInbox.find(o=>o.id===offerId&&['pending','counter','countered'].includes(o.status));if(!offer)return;
   const p=G.players.find(x=>x.id===offer.playerId);
   offer.status='rejected';
   if(p&&Math.random()<.18){p.wantsOut=true;p.morale=clamp((p.morale||70)-12,0,100);addNews(`${p.name} fica insatisfeito apos proposta recusada`,'mood');}
@@ -1705,11 +1705,11 @@ function rejectTransferOffer(offerId){
 }
 
 function counterTransferOffer(offerId){
-  const offer=G.transferInbox.find(o=>o.id===offerId&&['pending','countered'].includes(o.status));if(!offer)return;
+  const offer=G.transferInbox.find(o=>o.id===offerId&&['pending','counter','countered'].includes(o.status));if(!offer)return;
   const p=G.players.find(x=>x.id===offer.playerId);if(!p)return;
   const result=evaluateOffer(p,offer);
   const ask=result.value||Math.round((p.value||p.valorMercado)*1.15);
-  offer.counterOffer=ask;offer.status='countered';offer.round++;
+  offer.counterOffer=ask;offer.status='counter';offer.round++;
   addNews(`${G.club.name} pede ${fmtM(ask)} por ${p.name}`,'transfer');
   save();nav(_curPage);
 }
@@ -1959,7 +1959,7 @@ function renderPage(page){
 
 // ── DASHBOARD ──────────────────────────────────────────────
 function renderTransferInbox(limit=8){
-  const offers=(G.transferInbox||[]).filter(o=>['pending','countered'].includes(o.status)).slice(0,limit);
+  const offers=(G.transferInbox||[]).filter(o=>['pending','counter','countered'].includes(o.status)).slice(0,limit);
   if(!offers.length)return'<div class="small muted">Nenhuma proposta no momento.</div>';
   return offers.map(o=>`<div class="flex-between small mb-1" style="gap:8px;border-bottom:1px solid var(--border);padding-bottom:6px">
     <div><b>${o.playerName}</b><div class="muted very-small">${o.club} - ${fmtM(o.value)} ${o.counterOffer?`| Contra: ${fmtM(o.counterOffer)}`:''}</div></div>
