@@ -1172,7 +1172,6 @@ function processMatchDay(playerMatchId){
     const aClub=G.allClubs.find(c=>c.name===f.away)||{overall:rnd(60,80)};
     const res=simulateMatch({name:f.home,overall:hClub.overall||70,squad:[]},{name:f.away,overall:aClub.overall||70,squad:[]},{neutral:false});
     f.played=true;f.hG=res.hGoals;f.aG=res.aGoals;
-    updateTable(G.league.table,f.home,f.away,res.hGoals,res.aGoals);
     results.push({home:f.home,away:f.away,hG:f.hG,aG:f.aG});
   }
   G.league.round=Math.max(G.league.round||0,round);
@@ -1183,6 +1182,17 @@ function processMatchDay(playerMatchId){
 
 function updateLeagueTable(){
   if(!G.league?.table)return[];
+  G.league.table.forEach(t=>{t.w=0;t.d=0;t.l=0;t.gf=0;t.ga=0;t.pts=0;t.played=0;t.form=[];});
+  (G.league.fixtures||[]).filter(f=>f.played).sort((a,b)=>(a.round||0)-(b.round||0)).forEach(f=>{
+    const h=G.league.table.find(t=>t.name===f.home);
+    const a=G.league.table.find(t=>t.name===f.away);
+    if(!h||!a)return;
+    h.gf+=f.hG;h.ga+=f.aG;h.played++;
+    a.gf+=f.aG;a.ga+=f.hG;a.played++;
+    if(f.hG>f.aG){h.w++;h.pts+=3;h.form=[...(h.form||[]),'W'].slice(-5);a.l++;a.form=[...(a.form||[]),'L'].slice(-5);}
+    else if(f.hG===f.aG){h.d++;a.d++;h.pts++;a.pts++;h.form=[...(h.form||[]),'D'].slice(-5);a.form=[...(a.form||[]),'D'].slice(-5);}
+    else{a.w++;a.pts+=3;a.form=[...(a.form||[]),'W'].slice(-5);h.l++;h.form=[...(h.form||[]),'L'].slice(-5);}
+  });
   G.league.table.sort((a,b)=>b.pts-a.pts||((b.gf-b.ga)-(a.gf-a.ga))||b.gf-a.gf);
   return G.league.table;
 }
@@ -1198,7 +1208,7 @@ function playMyLeagueGame(fixture){
   fixture.hG=result.hGoals;fixture.aG=result.aGoals;
   const myGoals=isHome?result.hGoals:result.aGoals;
   const oppGoals=isHome?result.aGoals:result.hGoals;
-  updateTable(G.league.table,fixture.home,fixture.away,result.hGoals,result.aGoals);
+  finishMatch(fixture);
   if(oppGoals===0)G.stats.cleanSheets++;
   G.stats.totalGames++;
   if(myGoals>oppGoals){G.stats.wins++;G.form.push('W');}
@@ -1209,7 +1219,7 @@ function playMyLeagueGame(fixture){
   updateCoachCareer(myResult);
   updateClubFinance();
   updateClubSatisfaction(myResult);
-  processMatchDay(fixture.id||fixture);
+  processGameTurn(fixture);
   if(Math.random()<0.45)generateTransferOffers();
   if(G.form.slice(-5).filter(x=>x==='L').length>=3)addNews('Torcida cobra resposta apos sequencia negativa','coach');
   save();
@@ -1217,15 +1227,26 @@ function playMyLeagueGame(fixture){
 }
 
 function updateTable(table,homeName,awayName,hG,aG){
-  const h=table.find(t=>t.name===homeName);
-  const a=table.find(t=>t.name===awayName);
-  if(!h||!a)return;
-  h.gf+=hG;h.ga+=aG;h.played++;
-  a.gf+=aG;a.ga+=hG;a.played++;
-  if(hG>aG){h.w++;h.pts+=3;h.form=[...(h.form||[]),'W'].slice(-5);a.l++;a.form=[...(a.form||[]),'L'].slice(-5);}
-  else if(hG===aG){h.d++;h.pts+=1;h.form=[...(h.form||[]),'D'].slice(-5);a.d++;a.pts+=1;a.form=[...(a.form||[]),'D'].slice(-5);}
-  else{a.w++;a.pts+=3;a.form=[...(a.form||[]),'W'].slice(-5);h.l++;h.form=[...(h.form||[]),'L'].slice(-5);}
+  const fixture=(G.league?.fixtures||[]).find(f=>f.home===homeName&&f.away===awayName&&!f.played);
+  if(fixture){fixture.played=true;fixture.hG=hG;fixture.aG=aG;}
+  return updateLeagueTable();
+}
+
+function finishMatch(match){
+  if(match){match.played=true;}
+  return updateLeagueTable();
+}
+
+function saveGameState(){
+  save();
+}
+
+function processGameTurn(match){
+  finishMatch(match);
+  processMatchDay(match?.id||match);
+  processTransferOffersAllPlayers();
   updateLeagueTable();
+  saveGameState();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1478,7 +1499,8 @@ function isFreeAgent(player){
 }
 
 function isPlayerFree(player){
-  return isFreeAgent(player)&&canBeFreeAgent(player);
+  if(!isFreeAgent(player))return false;
+  return canBeFreeAgent(player);
 }
 
 function leagueForClub(clubName){
@@ -1516,11 +1538,19 @@ function updateClubSatisfaction(result=null){
 }
 
 function canBeFreeAgent(player){
-  if((player.overall||0)<70)return true;
-  if((player.contract?.endDate||G.season+1)<=G.season)return true;
+  const overall=player.overall||0;
+  const age=player.age||25;
+  const contractExpired=(player.contract?.endDate||G.season+1)<=G.season||player.contract?.remainingMonths===0;
+  if(overall>=80&&age<34){
+    const validReason=contractExpired||player.releasedReason==='rejeitou renovacao'||player.releasedReason==='liberacao rara'||player.wantsOut;
+    if(!validReason)return false;
+    if(player.freeAgentApproved===undefined)player.freeAgentApproved=Math.random()<.03;
+    return !!player.freeAgentApproved;
+  }
+  if(age>=34)return true;
+  if(overall<70)return true;
+  if(contractExpired)return true;
   if(player.releasedReason)return true;
-  if((player.age||25)>=34&&player.overall<82)return true;
-  if(player.wantsOut&&Math.random()<.08)return true;
   return false;
 }
 
@@ -1590,49 +1620,97 @@ function generateTransferOffers(force=false){
     const base=p.value||p.valorMercado||1e6;
     const multiplier=clamp(.78+(playerMarketScore(p)/160)+rnd(-8,14)/100,.75,1.55);
     const value=Math.round(base*multiplier);
-    const offer={id:Date.now()+rnd(100,9999),playerId:p.id,playerName:p.name,club:buyer.name,value,type:'buy',status:'pending',round:1,expires:G.season+1};
-    p.transferOffers=[offer,...(p.transferOffers||[])].slice(0,5);
-    G.transferInbox=[offer,...(G.transferInbox||[])].slice(0,20);
+    const offer=makeOffer(p,buyer.name,value);
     addNews(`${p.name} recebe proposta do ${buyer.name}: ${fmtM(value)}`,'transfer');
   });
 }
 
-function acceptTransferOffer(offerId){
-  const offer=G.transferInbox.find(o=>o.id===offerId&&o.status==='pending');if(!offer)return;
-  const p=G.players.find(x=>x.id===offer.playerId);if(!p)return;
+function makeOffer(player,club,value){
+  if(!player)return null;
+  player.transferOffers=player.transferOffers||[];
+  const offer={id:Date.now()+rnd(100,9999),playerId:player.id,playerName:player.name,club,value,type:'buy',status:'pending',round:1,expires:G.season+1,counterOffer:null};
+  player.transferOffers=[offer,...player.transferOffers].slice(0,5);
+  G.transferInbox=[offer,...(G.transferInbox||[])].slice(0,30);
+  return offer;
+}
+
+function evaluateOffer(player,offer){
+  const market=calculateMarketValue(player);
+  const minValue=Math.round(market*.85);
+  offer.marketValue=market;
+  if(offer.value>=market)return{decision:'accept',value:offer.value};
+  if(offer.value>=minValue){
+    offer.counterOffer=Math.round(market*rnd(102,118)/100);
+    return{decision:'counter',value:offer.counterOffer};
+  }
+  return{decision:'reject',value:offer.value};
+}
+
+function finalizeAcceptedOffer(player,offer){
+  if(!player||!offer||!G.players.find(p=>p.id===player.id))return false;
   offer.status='accepted';
   G.club.budget+=offer.value;
-  G.players=G.players.filter(x=>x.id!==p.id);
-  G.squad=G.squad.filter(x=>x.id!==p.id);
-  G.bench=G.bench.filter(x=>x.id!==p.id);
-  G.market.push({...p,club:offer.club});
-  addNews(`${G.club.name} vende ${p.name} para ${offer.club} por ${fmtM(offer.value)}`,'transfer');
-  enforceSquadLimits();save();updateTopbar();nav(_curPage);
+  G.players=G.players.filter(x=>x.id!==player.id);
+  G.squad=G.squad.filter(x=>x.id!==player.id);
+  G.bench=G.bench.filter(x=>x.id!==player.id);
+  const moved={...player,club:offer.club,contract:{...(player.contract||{}),club:offer.club,status:'active'}};
+  G.market.push(moved);
+  addNews(`${G.club.name} vende ${player.name} para ${offer.club} por ${fmtM(offer.value)}`,'transfer');
+  enforceSquadLimits();updateClubFinance();updateTopbar();
+  return true;
+}
+
+function processTransferOffers(player){
+  if(!player)return[];
+  player.transferOffers=player.transferOffers||[];
+  const processed=[];
+  player.transferOffers.filter(o=>o.status==='pending').forEach(offer=>{
+    const result=evaluateOffer(player,offer);
+    if(result.decision==='accept'){
+      finalizeAcceptedOffer(player,offer);
+    }else if(result.decision==='counter'){
+      offer.status='countered';
+      addNews(`${G.club.name} faz contra-proposta por ${player.name}: ${fmtM(offer.counterOffer)}`,'transfer');
+    }else{
+      offer.status='rejected';
+      addNews(`${G.club.name} recusa proposta baixa por ${player.name}: ${fmtM(offer.value)}`,'transfer');
+    }
+    processed.push({...offer,decision:result.decision});
+  });
+  return processed;
+}
+
+function processTransferOffersAllPlayers(){
+  const players=[...(G.players||[])];
+  const processed=[];
+  players.forEach(p=>processed.push(...processTransferOffers(p)));
+  G.transferInbox=(G.transferInbox||[]).slice(0,30);
+  return processed;
+}
+
+function acceptTransferOffer(offerId){
+  const offer=G.transferInbox.find(o=>o.id===offerId&&['pending','countered'].includes(o.status));if(!offer)return;
+  const p=G.players.find(x=>x.id===offer.playerId);if(!p)return;
+  if(offer.counterOffer&&offer.value<offer.counterOffer)offer.value=offer.counterOffer;
+  finalizeAcceptedOffer(p,offer);
+  save();nav(_curPage);
 }
 
 function rejectTransferOffer(offerId){
-  const offer=G.transferInbox.find(o=>o.id===offerId&&o.status==='pending');if(!offer)return;
+  const offer=G.transferInbox.find(o=>o.id===offerId&&['pending','countered'].includes(o.status));if(!offer)return;
   const p=G.players.find(x=>x.id===offer.playerId);
-  if(Math.random()<.45&&offer.round<2){
-    offer.round++;
-    offer.value=Math.round(offer.value*rnd(108,124)/100);
-    addNews(`${offer.club} aumenta proposta por ${offer.playerName} para ${fmtM(offer.value)}`,'transfer');
-  }else{
-    offer.status='rejected';
-    if(p&&Math.random()<.18){p.wantsOut=true;p.morale=clamp((p.morale||70)-12,0,100);addNews(`${p.name} fica insatisfeito apos proposta recusada`,'mood');}
-  }
+  offer.status='rejected';
+  if(p&&Math.random()<.18){p.wantsOut=true;p.morale=clamp((p.morale||70)-12,0,100);addNews(`${p.name} fica insatisfeito apos proposta recusada`,'mood');}
   save();nav(_curPage);
 }
 
 function counterTransferOffer(offerId){
-  const offer=G.transferInbox.find(o=>o.id===offerId&&o.status==='pending');if(!offer)return;
+  const offer=G.transferInbox.find(o=>o.id===offerId&&['pending','countered'].includes(o.status));if(!offer)return;
   const p=G.players.find(x=>x.id===offer.playerId);if(!p)return;
-  const ask=Math.round((p.value||p.valorMercado)*1.35);
-  if(Math.random()<.52){
-    offer.value=ask;offer.round++;addNews(`${offer.club} aceita contra-proposta por ${p.name}: ${fmtM(ask)}`,'transfer');
-  }else{
-    offer.status='rejected';addNews(`${offer.club} desiste da negociacao por ${p.name}`,'transfer');
-  }
+  const result=evaluateOffer(p,offer);
+  const ask=result.value||Math.round((p.value||p.valorMercado)*1.15);
+  offer.counterOffer=ask;offer.status='countered';offer.round++;
+  addNews(`${G.club.name} pede ${fmtM(ask)} por ${p.name}`,'transfer');
   save();nav(_curPage);
 }
 
@@ -1881,10 +1959,10 @@ function renderPage(page){
 
 // ── DASHBOARD ──────────────────────────────────────────────
 function renderTransferInbox(limit=8){
-  const offers=(G.transferInbox||[]).filter(o=>o.status==='pending').slice(0,limit);
+  const offers=(G.transferInbox||[]).filter(o=>['pending','countered'].includes(o.status)).slice(0,limit);
   if(!offers.length)return'<div class="small muted">Nenhuma proposta no momento.</div>';
   return offers.map(o=>`<div class="flex-between small mb-1" style="gap:8px;border-bottom:1px solid var(--border);padding-bottom:6px">
-    <div><b>${o.playerName}</b><div class="muted very-small">${o.club} - ${fmtM(o.value)}</div></div>
+    <div><b>${o.playerName}</b><div class="muted very-small">${o.club} - ${fmtM(o.value)} ${o.counterOffer?`| Contra: ${fmtM(o.counterOffer)}`:''}</div></div>
     <div class="flex-row" style="gap:4px">
       <button class="btn btn-green btn-sm" onclick="acceptTransferOffer(${o.id})">Aceitar</button>
       <button class="btn btn-accent btn-sm" onclick="counterTransferOffer(${o.id})">Contra</button>
