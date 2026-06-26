@@ -361,6 +361,7 @@ tr.my-club td:first-child{border-left:3px solid var(--green)}
       <div class="sb-item" data-page="league" onclick="nav('league')"><span class="icon">🏆</span>Liga</div>
       <div class="sb-item" data-page="cup" onclick="nav('cup')"><span class="icon">🥇</span>Copa Nacional</div>
       <div class="sb-item" data-page="continental" onclick="nav('continental')"><span class="icon">🌍</span>Continental</div>
+      <div class="sb-item" data-page="calendar" onclick="nav('calendar')"><span class="icon">📅</span>Calendário</div>
       <div class="sb-item" data-page="custom" onclick="nav('custom')"><span class="icon">🎯</span>Torneio Custom</div>
     </div>
     <div class="sb-section">
@@ -389,6 +390,7 @@ tr.my-club td:first-child{border-left:3px solid var(--green)}
     <div class="page" id="page-league"></div>
     <div class="page" id="page-cup"></div>
     <div class="page" id="page-continental"></div>
+    <div class="page" id="page-calendar"></div>
     <div class="page" id="page-custom"></div>
     <div class="page" id="page-market"></div>
     <div class="page" id="page-sandbox"></div>
@@ -538,6 +540,7 @@ let G={
   contractNegotiations:[],
   liveScores:[],
   liveMatches:[],
+  qualifiedLibertadores:[],
   gameEconomy:{money:50e6,gold:350,inflationControl:1,goldToMoney:100000},
   user:{loginStreak:0,lastLoginDate:null,lastReward:null},
   managerProfile:{reputation:45,careerLevel:'iniciante',titlesWon:0,winRate:0,jobOffers:[]},
@@ -621,7 +624,7 @@ function createPlayer(overrides={}){
   const p={
     id,name,firstName,lastName,age,nationality:nat,club,position:pos,
     overall,potential,valorMercado:value,value,playerValue:value,marketValue:value,transferValue:value,salaryDemand:salary,salario:salary,
-    contract:{club:contractClub,salary,duration:contractYears,years:contractYears,remainingMonths:contractYears*12,endDate:G.season+contractYears,expiresSeason:G.season+contractYears,status:contractStatus},
+    contract:{club:contractClub,salary,duration:contractYears,years:contractYears,remainingMonths:contractYears*12,endDate:G.season+contractYears,expiresSeason:G.season+contractYears,status:contractStatus,signingBonus:Math.round(salary*2.5)},
     demand,transferOffers:[],loanListed:false,wantsOut:false,
     moral:initialMorale,morale:initialMorale,condicionamento:initialFitness,fatigue:100-initialFitness,experience:rnd(0,120),developmentPotential:potential,lesao:null,
     habilidades:generateSkills(pos,overall),
@@ -715,6 +718,42 @@ function validateLeagueTeams(league,team){
   if(league==='Champions League')return meta.continent==='Europe';
   if(league==='Libertadores')return meta.continent==='South America';
   return true;
+}
+
+function calculateClubObjectives(club=G.club){
+  const players=G.players||[];
+  const rosterAvg=players.length?Math.round(players.reduce((sum,p)=>sum+(p.overall||60),0)/players.length):65;
+  const str=G.squad?.length?calcStrength(G.squad,G.tactics).overall:rosterAvg;
+  if(str<68)return{primaryGoal:'Evitar rebaixamento',secondaryGoal:'Desenvolver jovens e estabilizar finanças',difficultyLevel:'Alta',targetStrength:str};
+  if(str<78)return{primaryGoal:'Terminar no meio da tabela',secondaryGoal:'Brigar por classificação continental',difficultyLevel:'Média',targetStrength:str};
+  if(str<86)return{primaryGoal:'Classificação continental',secondaryGoal:'Chegar longe nas copas',difficultyLevel:'Alta',targetStrength:str};
+  return{primaryGoal:'Ganhar liga',secondaryGoal:'Conquistar títulos nacionais e continentais',difficultyLevel:'Elite',targetStrength:str};
+}
+
+function getCupWinner(cupState){
+  return cupState?.winner||cupState?.rounds?.[cupState.rounds.length-1]?.matches?.[0]?.winner||null;
+}
+
+function assignLibertadoresSlots(leagueTable,cupWinner){
+  const sorted=[...(leagueTable||[])].sort((a,b)=>(b.pts||0)-(a.pts||0)||((b.gf||0)-(b.ga||0))-((a.gf||0)-(a.ga||0))||(b.gf||0)-(a.gf||0));
+  const slots=[];
+  sorted.slice(0,4).forEach((t,i)=>{
+    const club=t.name||t.club||t;
+    if(validateLeagueTeams('Libertadores',club))slots.push({club,source:`Brasileirão ${i+1}º`});
+  });
+  if(cupWinner&&validateLeagueTeams('Libertadores',cupWinner)){
+    if(!slots.some(s=>s.club===cupWinner)){
+      slots.push({club:cupWinner,source:'Campeão da Copa do Brasil'});
+    }else{
+      const inherited=sorted.find(t=>{
+        const club=t.name||t.club||t;
+        return validateLeagueTeams('Libertadores',club)&&!slots.some(s=>s.club===club);
+      });
+      if(inherited)slots.push({club:inherited.name||inherited.club||inherited,source:'Vaga herdada da Copa do Brasil'});
+    }
+  }
+  G.qualifiedLibertadores=slots;
+  return slots;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1166,13 +1205,22 @@ function initLeague(leagueName){
   }
   // Shuffle
   for(let i=fixtures.length-1;i>0;i--){const j=rnd(0,i);[fixtures[i],fixtures[j]]=[fixtures[j],fixtures[i]];}
-  assignFixtureRounds(fixtures,clubs.length);
+  assignFixtureRounds(fixtures,clubs.length,leagueName);
   G.league={name:leagueName,table,fixtures,round:0,started:true,finished:false};
 }
 
-function assignFixtureRounds(fixtures,clubCount){
+function assignFixtureRounds(fixtures,clubCount,competitionName){
   const gamesPerRound=Math.max(1,Math.floor(clubCount/2));
-  fixtures.forEach((f,i)=>{f.id=f.id||`L${G.season}-${i}`;f.round=f.round||Math.floor(i/gamesPerRound)+1;});
+  const seasonYear=new Date().getFullYear()+Math.max(0,(G.season||1)-1);
+  fixtures.forEach((f,i)=>{
+    f.id=f.id||`L${G.season}-${i}`;
+    f.round=f.round||Math.floor(i/gamesPerRound)+1;
+    f.competition=f.competition||competitionName||G.league?.name||'Liga';
+    if(!f.date){
+      const d=new Date(seasonYear,6,1+(f.round-1)*7);
+      f.date=d.toLocaleDateString('pt-BR');
+    }
+  });
   return fixtures;
 }
 
@@ -1191,7 +1239,7 @@ function simulateLeagueRound(){
 
 function processMatchDay(playerMatchId){
   if(!G.league?.started)return[];
-  assignFixtureRounds(G.league.fixtures,G.league.table.length);
+  assignFixtureRounds(G.league.fixtures,G.league.table.length,G.league.name);
   const fixture=typeof playerMatchId==='object'?playerMatchId:G.league.fixtures.find(f=>f.id===playerMatchId);
   const round=fixture?.round||G.league.round+1;
   const roundFixtures=G.league.fixtures.filter(f=>!f.played&&f.round===round);
@@ -1356,6 +1404,10 @@ function simulateCupRound(cupState){
     }
   } else {
     cupState.finished=true;
+    cupState.winner=winners[0]||cupState.winner;
+    if(cupState.name==='Copa do Brasil'&&G.league?.table?.length){
+      G.qualifiedLibertadores=assignLibertadoresSlots(G.league.table,cupState.winner);
+    }
     if(winners.length>0)toast(`🏆 Campeão: ${winners[0]}!`,'ok');
   }
 }
@@ -1419,6 +1471,8 @@ function nextSeason(){
   addNews(`Temporada ${G.season} comeca com mercado aquecido`,'world');
   // Reset competition results but keep structure
   G.league.started=false;G.cup.started=false;G.continental.started=false;
+  G.club.objectives=calculateClubObjectives();
+  G.qualifiedLibertadores=[];
   G.history.push({season:G.season-1,stats:{...G.stats},form:[...G.form]});
   save();
   return events;
@@ -1469,7 +1523,9 @@ function normalizeCareerSystems(){
   G.user.loginStreak=G.user.loginStreak||0;
   G.club.finance=G.club.finance||{balance:G.club.budget||0,revenue:0,expenses:0,salaries:0};
   G.club.satisfaction=G.club.satisfaction||{fans:70,board:72};
-  if(G.league?.fixtures?.length)assignFixtureRounds(G.league.fixtures,G.league.table?.length||20);
+  if(G.league?.fixtures?.length)assignFixtureRounds(G.league.fixtures,G.league.table?.length||20,G.league.name);
+  G.club.objectives=G.club.objectives||calculateClubObjectives();
+  G.qualifiedLibertadores=G.qualifiedLibertadores||[];
   G.players=(G.players||[]).map(normalizeMarketPlayer);
   G.market=(G.market||[]).map(normalizeMarketPlayer);
   G.baseYouth=(G.baseYouth||[]).map(normalizeMarketPlayer).slice(0,MAX_YOUTH_PLAYERS);
@@ -1583,6 +1639,7 @@ function normalizeMarketPlayer(p){
   p.contract.club=p.contract.club||p.club||'Livre';
   p.contract.status=p.contract.status||((p.contract.club&&p.contract.club!=='Livre')?'active':'free');
   p.contract.salary=p.contract.salary||p.salario||0;
+  p.contract.signingBonus=p.contract.signingBonus??Math.round((p.contract.salary||p.salario||0)*2.5);
   p.club=p.contract.club==='Livre'?'Livre':(p.club||p.contract.club);
   const marketValue=calculateMarketValue(p);
   p.marketValue=marketValue;
@@ -1602,7 +1659,7 @@ function normalizeMarketPlayer(p){
     const club=pick(LEAGUES_DATA[league].clubs);
     p.club=club;
     const years=rnd(1,4);
-    p.contract={club,salary:p.salaryDemand,duration:years,years,remainingMonths:years*12,endDate:G.season+years,expiresSeason:G.season+years,status:'active'};
+    p.contract={club,salary:p.salaryDemand,duration:years,years,remainingMonths:years*12,endDate:G.season+years,expiresSeason:G.season+years,status:'active',signingBonus:Math.round((p.salaryDemand||0)*2.5)};
     p.transferValue=calculateTransferValue(p);
   }
   return p;
@@ -1946,7 +2003,7 @@ function finalizeTransfer(contractNegotiationId){
   if(!spendMoney(totalMoneyCost)){toast('Orcamento insuficiente para transferencia + luvas','err');return;}
   if(!spendGold(payment.gold||0)){toast('Ouro insuficiente','err');G.club.budget+=totalMoneyCost;G.gameEconomy.money=G.club.budget;return;}
   p.club=G.club.name;
-  p.contract={club:G.club.name,salary:c.salaryOffer,duration:c.contractLength,years:c.contractLength,remainingMonths:c.contractLength*12,endDate:G.season+c.contractLength,expiresSeason:G.season+c.contractLength,status:'active',squadStatus:c.squadStatus};
+  p.contract={club:G.club.name,salary:c.salaryOffer,duration:c.contractLength,years:c.contractLength,remainingMonths:c.contractLength*12,endDate:G.season+c.contractLength,expiresSeason:G.season+c.contractLength,status:'active',squadStatus:c.squadStatus,signingBonus:c.signingBonus||0};
   p.salario=c.salaryOffer;p.salaryDemand=c.salaryDemand;p.wantsOut=false;
   G.players.push(p);G.market=G.market.filter(x=>x.id!==p.id);
   n.status='completed';c.status='completed';
@@ -1961,7 +2018,7 @@ function renewContract(id){
   const signing=Math.round(salary*3);
   if(G.club.budget<signing){toast('Orcamento insuficiente para luvas','err');return;}
   G.club.budget-=signing;
-  p.contract={club:G.club.name,salary,duration:3,years:3,remainingMonths:36,endDate:G.season+3,expiresSeason:G.season+3,status:'active',squadStatus:G.squad.find(s=>s.id===p.id)?'titular':'rotacao'};
+  p.contract={club:G.club.name,salary,duration:3,years:3,remainingMonths:36,endDate:G.season+3,expiresSeason:G.season+3,status:'active',squadStatus:G.squad.find(s=>s.id===p.id)?'titular':'rotacao',signingBonus:signing};
   p.salario=salary;p.wantsOut=false;p.morale=clamp((p.morale||70)+8,0,100);
   updateClubFinance();
   addNews(`${p.name} renova contrato ate a temporada ${p.contract.expiresSeason}`,'contract');
@@ -2098,6 +2155,7 @@ function renderPage(page){
     case'league':return renderLeague();
     case'cup':return renderCupPage(G.cup,'Copa do Brasil');
     case'continental':return renderCupPage(G.continental,'Champions League');
+    case'calendar':return renderCalendar();
     case'custom':return renderCustom();
     case'market':return renderMarket();
     case'sandbox':return renderSandbox();
@@ -2225,6 +2283,8 @@ function renderClub(){
   normalizeCareerSystems();
   const finance=updateClubFinance();
   const sat=updateClubSatisfaction();
+  const objectives=calculateClubObjectives();
+  G.club.objectives=objectives;
   const expiring=[...G.players].sort((a,b)=>(a.contract?.endDate||99)-(b.contract?.endDate||99)||b.overall-a.overall).slice(0,14);
   const squadCost=G.players.reduce((s,p)=>s+(p.transferValue||p.value||0),0);
   const bar=(value,color)=>`<div class="str-bar" style="height:8px"><div class="str-fill" style="width:${clamp(value,0,100)}%;background:${color}"></div></div>`;
@@ -2256,6 +2316,15 @@ function renderClub(){
       <div class="small mb-1">Win rate: <b>${G.managerProfile.winRate}%</b></div>
       <div class="small mb-1">Segurança: <b style="color:${(G.coach.jobSecurity||70)<35?'var(--red)':'var(--green)'}">${G.coach.jobSecurity||70}%</b></div>
       ${(G.managerProfile.jobOffers||[]).map(o=>`<div class="small mt-1">Oferta de emprego: <b>${o.club}</b> (${o.league})</div>`).join('')||'<div class="small muted mt-1">Sem ofertas de emprego no momento.</div>'}
+    </div>
+  </div>
+  <div class="card mb-3">
+    <div class="card-hdr">Metas da temporada</div>
+    <div class="cards-grid">
+      <div class="stat-card"><div class="stat-val" style="font-size:1rem">${objectives.primaryGoal}</div><div class="stat-lbl">Meta principal</div></div>
+      <div class="stat-card"><div class="stat-val" style="font-size:.9rem">${objectives.secondaryGoal}</div><div class="stat-lbl">Meta secundária</div></div>
+      <div class="stat-card"><div class="stat-val">${objectives.difficultyLevel}</div><div class="stat-lbl">Exigência</div></div>
+      <div class="stat-card"><div class="stat-val" style="color:${ovrColor(objectives.targetStrength)}">${objectives.targetStrength}</div><div class="stat-lbl">Força atual</div></div>
     </div>
   </div>
   <div class="two-col mb-3">
@@ -2730,7 +2799,8 @@ function renderLeague(){
       <button class="btn btn-green btn-lg btn-full" onclick="startLeague()">🏆 Iniciar Campeonato</button>
     </div>`;
   }
-  const table=[...G.league.table].sort((a,b)=>b.pts-a.pts||(b.gf-b.ga)-(a.gf-a.ga));
+  const table=[...G.league.table].sort((a,b)=>b.pts-a.pts||((b.gf-b.ga)-(a.gf-a.ga))||b.gf-a.gf);
+  const libertadoresSlots=G.league.name==='Brasileirão'?assignLibertadoresSlots(table,getCupWinner(G.cup)):[];
   const myFix=getMyFixtures();
   const played=myFix.filter(f=>f.played);
   const upcoming=myFix.filter(f=>!f.played).slice(0,5);
@@ -2765,6 +2835,13 @@ function renderLeague(){
       </div>
     </div>
     <div>
+      ${libertadoresSlots.length?`<div class="card mb-2">
+        <div class="card-hdr">🌎 Vagas Libertadores</div>
+        ${libertadoresSlots.map((s,i)=>`<div class="flex-between small" style="padding:5px 0;border-bottom:1px solid var(--border)">
+          <span><b>${i+1}. ${s.club}</b></span>
+          <span class="muted">${s.source}</span>
+        </div>`).join('')}
+      </div>`:''}
       <div class="card mb-2">
         <div class="card-hdr">📅 Meus Próximos Jogos</div>
         ${upcoming.map(f=>{
@@ -3126,7 +3203,7 @@ function createMarketPlayer(){
   if(isFreeAgent(p)&&!canBeFreeAgent(p)){
     const league=pick(Object.keys(LEAGUES_DATA));const club=pick(LEAGUES_DATA[league].clubs);
     const years=rnd(1,4);
-    p.club=club;p.contract={club,salary:p.salaryDemand,duration:years,years,remainingMonths:years*12,endDate:G.season+years,expiresSeason:G.season+years,status:'active'};
+    p.club=club;p.contract={club,salary:p.salaryDemand,duration:years,years,remainingMonths:years*12,endDate:G.season+years,expiresSeason:G.season+years,status:'active',signingBonus:Math.round((p.salaryDemand||0)*2.5)};
     normalizeMarketPlayer(p);
   }
   return p;
@@ -3353,6 +3430,74 @@ function renderHistory(){
       <div class="stat-card"><div class="stat-val">${h.stats.goals}</div><div class="stat-lbl">Gols</div></div>
       <div class="stat-card"><div class="stat-val">${h.stats.totalGames}</div><div class="stat-lbl">Jogos</div></div>
     </div>
+  </div>`).join('')}`;
+}
+
+// ── CALENDAR ───────────────────────────────────────────────
+let _calendarFilter='all';
+
+function normalizeCalendarMatch(match,competition,roundLabel,roundNum,dateFallback){
+  const played=!!match.played;
+  const score=played?`${match.hG} x ${match.aG}`:'vs';
+  const home=match.home||'TBD';
+  const away=match.away||'TBD';
+  return{
+    competition,
+    round:roundNum||match.round||1,
+    roundLabel:roundLabel||`Rodada ${match.round||1}`,
+    date:match.date||dateFallback||'-',
+    home,away,played,score,
+    status:played?'Finalizado':'Futuro',
+    myClub:home===G.club.name||away===G.club.name
+  };
+}
+
+function getSeasonCalendarMatches(){
+  const list=[];
+  (G.league.fixtures||[]).forEach(f=>{
+    list.push(normalizeCalendarMatch(f,G.league.name||'Liga',`Rodada ${f.round||1}`,f.round,f.date));
+  });
+  [G.cup,G.continental].forEach(cup=>{
+    if(!cup?.started)return;
+    (cup.rounds||[]).forEach((r,ri)=>{
+      (r.matches||[]).forEach((m,mi)=>{
+        const d=m.date||`Temporada ${G.season} - ${r.name}`;
+        list.push(normalizeCalendarMatch(m,cup.name||'Copa',r.name,ri+1,d));
+      });
+    });
+  });
+  if(G.custom?.started){
+    (G.custom.fixtures||[]).forEach(f=>{
+      list.push(normalizeCalendarMatch(f,'Torneio Custom',`Rodada ${f.round||1}`,f.round,f.date||`Temporada ${G.season} - Rodada ${f.round||1}`));
+    });
+  }
+  return list.sort((a,b)=>a.round-b.round||a.competition.localeCompare(b.competition)||a.home.localeCompare(b.home));
+}
+
+function renderCalendar(){
+  const matches=getSeasonCalendarMatches();
+  const competitions=['all',...new Set(matches.map(m=>m.competition))];
+  const filtered=_calendarFilter==='all'?matches:matches.filter(m=>m.competition===_calendarFilter);
+  const grouped={};
+  filtered.forEach(m=>{
+    const key=`${m.competition} - ${m.roundLabel}`;
+    grouped[key]=grouped[key]||[];
+    grouped[key].push(m);
+  });
+  return`<div class="page-hdr">
+    <div><div class="page-title">📅 Calendário</div><div class="page-sub">Temporada ${G.season} - jogos futuros e passados</div></div>
+    <select class="filter-select" onchange="_calendarFilter=this.value;nav('calendar')">
+      ${competitions.map(c=>`<option value="${c}" ${_calendarFilter===c?'selected':''}>${c==='all'?'Todas as competições':c}</option>`).join('')}
+    </select>
+  </div>
+  ${filtered.length===0?'<div class="card"><div class="small muted">Nenhum jogo criado ainda. Inicie uma liga, copa ou torneio custom.</div></div>':
+  Object.entries(grouped).map(([group,items])=>`<div class="card mb-2">
+    <div class="card-hdr">${group}</div>
+    ${items.map(m=>`<div class="flex-between small" style="gap:10px;padding:7px 0;border-bottom:1px solid var(--border);${m.myClub?'background:rgba(34,197,94,.06);margin:0 -8px;padding-left:8px;padding-right:8px;border-radius:6px':''}">
+      <span class="muted" style="min-width:92px">${m.date}</span>
+      <span style="flex:1"><b>${m.home}</b> ${m.score} <b>${m.away}</b></span>
+      <span class="badge ${m.played?'b-pos':'b-spec'}">${m.status}</span>
+    </div>`).join('')}
   </div>`).join('')}`;
 }
 
@@ -3645,6 +3790,7 @@ function saveClubSetup(){
   const bv=document.getElementById('budgetInput');
   if(bv)G.club.budget=bv.value==='random'?rnd(18,95)*1e6:+bv.value;
   G.club.squad=G.players;
+  G.club.objectives=calculateClubObjectives();
   _setupBadge=G.club.badge;_setupColor=G.club.color;
   save();updateTopbar();closeModal('overlaySetup');
   toast('✅ Clube configurado!');nav('dashboard');
