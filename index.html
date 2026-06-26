@@ -334,6 +334,7 @@ tr.my-club td:first-child{border-left:3px solid var(--green)}
   </div>
   <div class="tb-stats">
     <div class="tb-stat">💰 <b id="tbBudget">€0</b></div>
+    <div class="tb-stat">🪙 <b id="tbGold">0</b></div>
     <div class="tb-stat">📅 Temp <b id="tbSeason">1</b></div>
     <div class="tb-stat">⭐ Força <b id="tbStr">0</b></div>
     <div class="tb-stat">📋 Elenco <b id="tbSquad">0</b></div>
@@ -537,6 +538,8 @@ let G={
   contractNegotiations:[],
   liveScores:[],
   liveMatches:[],
+  gameEconomy:{money:50e6,gold:350,inflationControl:1,goldToMoney:100000},
+  user:{loginStreak:0,lastLoginDate:null,lastReward:null},
   managerProfile:{reputation:45,careerLevel:'iniciante',titlesWon:0,winRate:0,jobOffers:[]},
   coach:{name:'Treinador',reputation:45,level:1,titles:[],jobSecurity:78},
   nextPlayerId:10000,
@@ -1420,6 +1423,13 @@ function normalizeCareerSystems(){
   G.managerProfile=G.managerProfile||{reputation:G.coach?.reputation||45,careerLevel:'iniciante',titlesWon:G.coach?.titles?.length||0,winRate:0,jobOffers:[]};
   G.coach=G.coach||{name:'Treinador',reputation:45,level:1,titles:[],jobSecurity:78};
   G.club=G.club||{name:'Meu Clube',budget:50e6};
+  G.gameEconomy=G.gameEconomy||{money:G.club.budget||0,gold:350,inflationControl:1,goldToMoney:100000};
+  G.gameEconomy.money=G.club.budget||G.gameEconomy.money||0;
+  G.gameEconomy.gold=G.gameEconomy.gold??350;
+  G.gameEconomy.inflationControl=G.gameEconomy.inflationControl||1;
+  G.gameEconomy.goldToMoney=G.gameEconomy.goldToMoney||100000;
+  G.user=G.user||{loginStreak:0,lastLoginDate:null,lastReward:null};
+  G.user.loginStreak=G.user.loginStreak||0;
   G.club.finance=G.club.finance||{balance:G.club.budget||0,revenue:0,expenses:0,salaries:0};
   G.club.satisfaction=G.club.satisfaction||{fans:70,board:72};
   if(G.league?.fixtures?.length)assignFixtureRounds(G.league.fixtures,G.league.table?.length||20);
@@ -1428,6 +1438,103 @@ function normalizeCareerSystems(){
   G.baseYouth=(G.baseYouth||[]).map(normalizeMarketPlayer).slice(0,MAX_YOUTH_PLAYERS);
   enforceSquadLimits();
   updateClubFinance();
+}
+
+function todayKey(){
+  return new Date().toISOString().slice(0,10);
+}
+
+function addDailyReward(){
+  normalizeCareerSystems();
+  const streak=Math.max(1,G.user.loginStreak||1);
+  const gold=Math.min(420,80+streak*20);
+  const money=Math.round((800000+streak*200000)*(G.gameEconomy.inflationControl||1));
+  G.gameEconomy.gold+=gold;
+  G.club.budget+=money;
+  G.gameEconomy.money=G.club.budget;
+  G.user.lastReward={date:todayKey(),gold,money,streak};
+  addNews(`Login diario: +${gold} ouro e +${fmtM(money)} (sequencia ${streak})`,'reward');
+  return G.user.lastReward;
+}
+
+function processLoginReward(){
+  normalizeCareerSystems();
+  const today=todayKey();
+  if(G.user.lastLoginDate===today)return null;
+  const last=G.user.lastLoginDate?new Date(G.user.lastLoginDate+'T00:00:00Z'):null;
+  const now=new Date(today+'T00:00:00Z');
+  const diff=last?Math.round((now-last)/86400000):1;
+  G.user.loginStreak=diff===1?(G.user.loginStreak||0)+1:1;
+  G.user.lastLoginDate=today;
+  const reward=addDailyReward();
+  if(G.user.loginStreak>0&&G.user.loginStreak%7===0){
+    reward.player=giveRandomPlayerReward();
+  }
+  save();updateTopbar();
+  return reward;
+}
+
+function claimDailyReward(){
+  const reward=processLoginReward();
+  toast(reward?`+${reward.gold} ouro e ${fmtM(reward.money)}`:'Recompensa diaria ja coletada hoje');
+  nav('dashboard');
+}
+
+function playerGoldCost(player,moneyValue=null){
+  const value=moneyValue??(player.transferValue||player.marketValue||player.valorMercado||0);
+  const base=Math.ceil(value/(G.gameEconomy?.goldToMoney||100000));
+  if((player.overall||0)>=98)return Math.max(850,base);
+  if((player.overall||0)>=90)return Math.max(120,Math.ceil(base*.28));
+  if((player.overall||0)>=84)return Math.max(35,Math.ceil(base*.12));
+  return Math.max(0,Math.ceil(base*.05));
+}
+
+function canBuyWithCurrency(player,currencyType){
+  if((player.overall||0)>=98)return currencyType==='gold';
+  if((player.overall||0)>=90)return currencyType==='mixed'||currencyType==='gold';
+  return ['money','gold','mixed'].includes(currencyType);
+}
+
+function canPurchasePlayer(player,payment={currencyType:'money',money:0,gold:0}){
+  normalizeCareerSystems();
+  if(!canBuyWithCurrency(player,payment.currencyType))return{ok:false,reason:'Jogador lendario exige ouro.'};
+  if((player.overall||0)>=98&&!(payment.gold>0)&&payment.currencyType==='gold')return{ok:false,reason:'Jogador lendario exige ouro.'};
+  if((player.overall||0)>=90&&(payment.currencyType==='mixed'||payment.currencyType==='gold')&&!(payment.gold>0))return{ok:false,reason:'Estrelas exigem ouro na proposta.'};
+  if((payment.money||0)>G.club.budget)return{ok:false,reason:'Dinheiro insuficiente.'};
+  if((payment.gold||0)>G.gameEconomy.gold)return{ok:false,reason:'Ouro insuficiente.'};
+  return{ok:true};
+}
+
+function spendGold(amount){
+  normalizeCareerSystems();
+  amount=Math.max(0,Math.round(amount||0));
+  if(G.gameEconomy.gold<amount)return false;
+  G.gameEconomy.gold-=amount;
+  return true;
+}
+
+function spendMoney(amount){
+  normalizeCareerSystems();
+  amount=Math.max(0,Math.round(amount||0));
+  if(G.club.budget<amount)return false;
+  G.club.budget-=amount;
+  G.gameEconomy.money=G.club.budget;
+  return true;
+}
+
+function giveRandomPlayerReward(){
+  const overall=rnd(70,88)+(Math.random()<.12?rnd(4,8):0);
+  const reward=normalizeMarketPlayer(createPlayer({overall:clamp(overall,70,96),age:rnd(18,30),club:G.club.name,contractClub:G.club.name,contractStatus:'active',contractYears:rnd(2,4)}));
+  reward.rewardPlayer=true;
+  if(G.players.length<MAX_MAIN_PLAYERS){
+    G.players.push(reward);
+  }else{
+    G.market=[reward,...G.market].slice(0,120);
+    addNews(`${reward.name} ganho no login foi enviado ao mercado por elenco cheio`,'reward');
+  }
+  addNews(`Recompensa de 7 dias: ${reward.name} (${reward.overall} OVR)`,'reward');
+  enforceSquadLimits();
+  return reward;
 }
 
 function normalizeMarketPlayer(p){
@@ -1713,23 +1820,28 @@ function counterTransferOffer(offerId){
   save();nav(_curPage);
 }
 
-function startTransferNegotiation(playerId,offerValue=null){
+function startTransferNegotiation(playerId,offerValue=null,payment=null){
   const player=G.market.find(x=>x.id===playerId)||G.players.find(x=>x.id===playerId);
   if(!player)return null;
   normalizeMarketPlayer(player);
   const buyingClub=G.club.name;
   const sellingClub=isFreeAgent(player)?'Livre':(player.contract?.club||player.club);
   const targetValue=isFreeAgent(player)?0:(player.transferValue||calculateTransferValue(player));
-  const initialOffer=offerValue??(isFreeAgent(player)?0:Math.round(targetValue*rnd(82,96)/100));
-  if(initialOffer>G.club.budget){toast('Orcamento insuficiente para proposta','err');return null;}
-  const negotiation={id:Date.now()+rnd(100,9999),playerId:player.id,player:player.name,buyingClub,sellingClub,offerValue:initialOffer,counterOffer:null,status:'club_pending',createdSeason:G.season};
+  const defaultPayment={currencyType:'money',money:offerValue??(isFreeAgent(player)?0:Math.round(targetValue*rnd(82,96)/100)),gold:0};
+  const pay={...defaultPayment,...(payment||{})};
+  if((player.overall||0)>=98&&pay.currencyType!=='gold'){toast('Jogador lendario exige pagamento apenas em ouro','err');return null;}
+  const purchaseCheck=canPurchasePlayer(player,pay);
+  if(!purchaseCheck.ok){toast(purchaseCheck.reason,'err');return null;}
+  const equivalentValue=(pay.money||0)+(pay.gold||0)*(G.gameEconomy?.goldToMoney||100000);
+  const initialOffer=pay.money||0;
+  const negotiation={id:Date.now()+rnd(100,9999),playerId:player.id,player:player.name,buyingClub,sellingClub,offerValue:initialOffer,goldOffer:pay.gold||0,payment:pay,counterOffer:null,status:'club_pending',createdSeason:G.season};
   G.transferNegotiations=[negotiation,...(G.transferNegotiations||[])].slice(0,20);
-  const sellerAcceptance=isFreeAgent(player)||initialOffer>=targetValue*.92||player.wantsOut&&initialOffer>=targetValue*.78;
+  const sellerAcceptance=isFreeAgent(player)||equivalentValue>=targetValue*.92||player.wantsOut&&equivalentValue>=targetValue*.78;
   if(sellerAcceptance){
     negotiation.status='club_accepted';
     addNews(`${sellingClub} aceita negociar ${player.name} com ${buyingClub}`,'transfer');
     startContractNegotiation(negotiation.id);
-  }else if(initialOffer>=targetValue*.75){
+  }else if(equivalentValue>=targetValue*.75){
     negotiation.counterOffer=Math.round(targetValue*rnd(103,118)/100);
     negotiation.status='countered';
     addNews(`${sellingClub} faz contra-proposta por ${player.name}: ${fmtM(negotiation.counterOffer)}`,'transfer');
@@ -1789,17 +1901,20 @@ function finalizeTransfer(contractNegotiationId){
   const p=G.market.find(x=>x.id===c.playerId);if(!p)return;
   c.playerSatisfaction=evaluateContractOffer(p,c);
   if(c.playerSatisfaction<72){toast('Jogador recusou o contrato','err');c.status='rejected';save();nav('market');return;}
-  const totalCost=(n.offerValue||0)+(c.signingBonus||0);
+  const payment=n.payment||{currencyType:'money',money:n.offerValue||0,gold:n.goldOffer||0};
+  const totalMoneyCost=(payment.money||0)+(c.signingBonus||0);
   if(G.players.length>=MAX_MAIN_PLAYERS){toast('Elenco principal cheio (25)','err');return;}
-  if(G.club.budget<totalCost){toast('Orcamento insuficiente para transferencia + luvas','err');return;}
-  G.club.budget-=totalCost;
+  const purchaseCheck=canPurchasePlayer(p,{...payment,money:totalMoneyCost});
+  if(!purchaseCheck.ok){toast(purchaseCheck.reason,'err');return;}
+  if(!spendMoney(totalMoneyCost)){toast('Orcamento insuficiente para transferencia + luvas','err');return;}
+  if(!spendGold(payment.gold||0)){toast('Ouro insuficiente','err');G.club.budget+=totalMoneyCost;G.gameEconomy.money=G.club.budget;return;}
   p.club=G.club.name;
   p.contract={club:G.club.name,salary:c.salaryOffer,duration:c.contractLength,years:c.contractLength,remainingMonths:c.contractLength*12,endDate:G.season+c.contractLength,expiresSeason:G.season+c.contractLength,status:'active',squadStatus:c.squadStatus};
   p.salario=c.salaryOffer;p.salaryDemand=c.salaryDemand;p.wantsOut=false;
   G.players.push(p);G.market=G.market.filter(x=>x.id!==p.id);
   n.status='completed';c.status='completed';
   if(!G.playerStats[p.id])G.playerStats[p.id]={goals:0,assists:0,games:0,minutes:0,yellows:0,reds:0,notes:[]};
-  addNews(`${G.club.name} fecha com ${p.name} por ${fmtM(n.offerValue||0)} + luvas ${fmtM(c.signingBonus||0)}`,'transfer');
+  addNews(`${G.club.name} fecha com ${p.name} por ${fmtM(payment.money||0)}${payment.gold?` + ${payment.gold} ouro`:''} + luvas ${fmtM(c.signingBonus||0)}`,'transfer');
   enforceSquadLimits();save();updateTopbar();nav('market');
 }
 
@@ -1925,6 +2040,7 @@ function updateTopbar(){
   if(tn)tn.textContent=G.club.name;
   const str=calcStrength(G.squad,G.tactics);
   setEl('tbBudget',fmtM(G.club.budget));
+  setEl('tbGold',G.gameEconomy?.gold??0);
   setEl('tbSeason',G.season);
   setEl('tbStr',str.overall);
   setEl('tbSquad',G.squad.length);
@@ -2014,6 +2130,7 @@ function renderDashboard(){
   <div class="cards-grid mb-3">
     <div class="stat-card"><div class="stat-val" style="color:${ovrColor(str.overall)}">${str.overall}</div><div class="stat-lbl">Força Geral</div></div>
     <div class="stat-card"><div class="stat-val" style="color:var(--green)">${fmtM(G.club.budget)}</div><div class="stat-lbl">Orçamento</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:var(--accent)">${G.gameEconomy?.gold??0}</div><div class="stat-lbl">Ouro</div></div>
     <div class="stat-card"><div class="stat-val">${G.squad.length}</div><div class="stat-lbl">Escalados</div></div>
     <div class="stat-card"><div class="stat-val">${G.players.length}</div><div class="stat-lbl">No Elenco</div></div>
     <div class="stat-card"><div class="stat-val">${G.stats.wins}</div><div class="stat-lbl">Vitórias</div></div>
@@ -2074,6 +2191,11 @@ function renderDashboard(){
       ${renderTransferInbox(3)}
       <button class="btn btn-ghost btn-sm mt-2" onclick="generateTransferOffers(true);save();nav('dashboard')">Buscar propostas</button>
     </div>
+  </div>
+  <div class="card mt-3">
+    <div class="card-hdr">Login diario</div>
+    <div class="small muted mb-2">Sequencia: <b>${G.user?.loginStreak||0}</b> dia(s) | Ultimo login: <b>${G.user?.lastLoginDate||'nunca'}</b> | Ouro: <b style="color:var(--accent)">${G.gameEconomy?.gold??0}</b></div>
+    <button class="btn btn-accent btn-sm" onclick="claimDailyReward()">Coletar recompensa</button>
   </div>
   <div class="card mt-3">
     <div class="card-hdr">Noticias do Mundo</div>
@@ -2999,13 +3121,23 @@ function submitPlayerProposal(id){
   if(G.players.length>=MAX_MAIN_PLAYERS){toast('Elenco principal cheio (25)','err');return;}
   normalizeMarketPlayer(p);
   const offerEl=document.getElementById('proposalValueInput');
+  const goldEl=document.getElementById('proposalGoldInput');
+  const currencyEl=document.getElementById('proposalCurrencyInput');
   const salaryEl=document.getElementById('proposalSalaryInput');
   const yearsEl=document.getElementById('proposalYearsInput');
   const offerValue=Math.max(0,Number(offerEl?.value||0));
+  const goldOffer=Math.max(0,Number(goldEl?.value||0));
+  const currencyType=currencyEl?.value||((p.overall||0)>=98?'gold':'money');
   const salaryOffer=Math.max(0,Number(salaryEl?.value||p.salaryDemand||p.salario||0));
   const years=clamp(Number(yearsEl?.value||3),1,5);
-  if(!isPlayerFree(p)&&offerValue>G.club.budget){toast('Orcamento insuficiente para proposta','err');return;}
-  const n=startTransferNegotiation(id,isPlayerFree(p)?0:offerValue);
+  const payment={
+    currencyType,
+    money:currencyType==='gold'?0:(isPlayerFree(p)?0:offerValue),
+    gold:currencyType==='money'?0:goldOffer
+  };
+  const purchaseCheck=canPurchasePlayer(p,payment);
+  if(!purchaseCheck.ok){toast(purchaseCheck.reason,'err');return;}
+  const n=startTransferNegotiation(id,payment.money,payment);
   if(!n){return;}
   const c=(G.contractNegotiations||[]).find(x=>x.transferId===n.id);
   if(c){
@@ -3278,15 +3410,19 @@ function openPlayer(id){
   </div>
   ${inMarket&&!inOwn?`<div class="card mb-2" style="padding:10px">
     <div class="card-hdr">Proposta individual</div>
-    <div class="small muted mb-2">${isPlayerFree(p)?'Jogador livre: negocie salario, duracao e luvas.':'Clube atual: envie um valor de transferencia e depois negocie o contrato.'}</div>
+    <div class="small muted mb-2">${(p.overall||0)>=98?'Jogador lendario: contratacao apenas com ouro.':isPlayerFree(p)?'Jogador livre: negocie salario, duracao e luvas.':'Clube atual: envie um valor de transferencia e depois negocie o contrato.'}</div>
     <div class="filters" style="margin-bottom:8px">
-      <input class="filter-input" id="proposalValueInput" type="number" min="0" step="100000" value="${isPlayerFree(p)?0:(p.transferValue||p.marketValue||p.valorMercado||0)}" placeholder="Valor da proposta">
+      <select class="filter-select" id="proposalCurrencyInput" onchange="const gold=this.value==='gold';document.getElementById('proposalValueInput').disabled=gold;document.getElementById('proposalGoldInput').disabled=this.value==='money'">
+        ${(p.overall||0)>=98?'<option value="gold" selected>Somente ouro</option>':(p.overall||0)>=90?'<option value="mixed" selected>Dinheiro + ouro</option><option value="gold">Ouro</option>':'<option value="money" selected>Dinheiro</option><option value="mixed">Dinheiro + ouro</option><option value="gold">Ouro</option>'}
+      </select>
+      <input class="filter-input" id="proposalValueInput" type="number" min="0" step="100000" value="${isPlayerFree(p)?0:(p.transferValue||p.marketValue||p.valorMercado||0)}" placeholder="Valor da proposta" ${(p.overall||0)>=98?'disabled':''}>
+      <input class="filter-input" id="proposalGoldInput" type="number" min="0" step="10" value="${playerGoldCost(p,p.transferValue||p.marketValue||p.valorMercado)}" placeholder="Ouro" ${(p.overall||0)>=90?'':'disabled'}>
       <input class="filter-input" id="proposalSalaryInput" type="number" min="0" step="10000" value="${p.salaryDemand||p.salario||0}" placeholder="Salario">
       <select class="filter-select" id="proposalYearsInput">
         ${[1,2,3,4,5].map(y=>`<option value="${y}" ${((p.age<24&&y===4)||(p.age>=24&&p.age<=31&&y===3)||(p.age>31&&y===2))?'selected':''}>${y} ano${y>1?'s':''}</option>`).join('')}
       </select>
     </div>
-    <div class="flex-between small mb-2"><span class="muted">Valor sugerido</span><b style="color:var(--green)">${isPlayerFree(p)?'Livre':fmtM(p.transferValue||p.marketValue||p.valorMercado)}</b></div>
+    <div class="flex-between small mb-2"><span class="muted">Valor sugerido</span><b style="color:var(--green)">${isPlayerFree(p)?'Livre':fmtM(p.transferValue||p.marketValue||p.valorMercado)} · ${playerGoldCost(p,p.transferValue||p.marketValue||p.valorMercado)} ouro</b></div>
     <button class="btn btn-green btn-sm" onclick="submitPlayerProposal(${id})">Enviar proposta</button>
   </div>`:''}
   <div class="mb-2">
@@ -3458,6 +3594,7 @@ async function startup(){
     document.getElementById('topbar').style.display='flex';
     document.getElementById('main').style.display='flex';
     _setupBadge=G.club.badge;_setupColor=G.club.color;
+    processLoginReward();
     updateTopbar();nav('dashboard');
     return;
   }
@@ -3499,6 +3636,7 @@ async function startup(){
   document.getElementById('topbar').style.display='flex';
   document.getElementById('main').style.display='flex';
   _setupBadge=G.club.badge;_setupColor=G.club.color;
+  processLoginReward();
   updateTopbar();
   // First-time setup
   showClubSetup();
