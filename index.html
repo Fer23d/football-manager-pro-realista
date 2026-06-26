@@ -488,15 +488,15 @@ const EVENT_NARRATIVES={
 
 // LEAGUES & CLUBS DATA
 const LEAGUES_DATA={
-  'Brasileirão':{country:'🇧🇷',clubs:['Flamengo','Palmeiras','Atletico-MG','Corinthians','Fluminense','Santos','Gremio','Internacional','Cruzeiro','Vasco','Botafogo','Fortaleza','Bragantino','Athletico-PR','Coritiba','Goias','Bahia','Ceara','Cuiaba','Sport']},
-  'Premier League':{country:'🏴󠁧󠁢󠁥󠁮󠁧󠁿',clubs:['Man City','Arsenal','Liverpool','Chelsea','Man Utd','Tottenham','Newcastle','Aston Villa','Brighton','West Ham','Fulham','Brentford','Crystal Palace','Wolves','Nottm Forest','Bournemouth','Everton','Leicester','Leeds','Southampton']},
-  'La Liga':{country:'🇪🇸',clubs:['Real Madrid','Barcelona','Atletico Madrid','Sevilla','Real Betis','Villarreal','Athletic Club','Valencia','Real Sociedad','Getafe','Osasuna','Celta Vigo','Rayo Vallecano','Almeria','Cadiz','Girona','Mallorca','Las Palmas','Leganes','Alaves']},
-  'Serie A':{country:'🇮🇹',clubs:['Inter','Milan','Juventus','Napoli','Roma','Lazio','Atalanta','Fiorentina','Torino','Bologna','Udinese','Sassuolo','Monza','Empoli','Lecce','Salernitana','Hellas Verona','Spezia','Cremonese','Sampdoria']},
-  'Bundesliga':{country:'🇩🇪',clubs:['Bayern','Dortmund','Leverkusen','Frankfurt','Union Berlin','Freiburg','Leipzig','Wolfsburg','Mainz','Hoffenheim','Bochum','Stuttgart','Augsburg','Hertha','Schalke','Cologne','Bremen','Monchengladbach','Dusseldorf','Nurnberg']},
-  'Ligue 1':{country:'FR',clubs:['PSG','Marseille','Lyon','Monaco','Lille','Rennes','Nice','Lens','Nantes','Montpellier','Strasbourg','Toulouse','Reims','Brest','Lorient','Metz','Le Havre','Auxerre','Saint-Etienne','Angers']},
-  'MLS':{country:'US',clubs:['Inter Miami','LA Galaxy','LAFC','Seattle Sounders','Atlanta United','New York City','New York Red Bulls','Orlando City','Austin FC','Portland Timbers','Columbus Crew','FC Cincinnati','Nashville SC','Charlotte FC','Chicago Fire','Dallas','Houston Dynamo','Sporting KC','Toronto FC','Vancouver Whitecaps']},
-  'Liga MX':{country:'MX',clubs:['America','Chivas','Cruz Azul','Pumas','Tigres','Monterrey','Toluca','Pachuca','Leon','Santos Laguna','Atlas','Puebla','Tijuana','Queretaro','Necaxa','Mazatlan','Juarez','Atletico San Luis']},
-  'Libertadores':{country:'SA',clubs:['Flamengo','Palmeiras','River Plate','Boca Juniors','Fluminense','Gremio','Internacional','Sao Paulo','Atletico-MG','Botafogo','Nacional','Penarol','Colo-Colo','Olimpia','LDU Quito','Independiente del Valle','Atletico Nacional','Junior','Cerro Porteno','Universitario']},
+  'Brasileirão':{country:'🇧🇷',countryCode:'Brazil',continent:'South America',clubs:['Flamengo','Palmeiras','Atletico-MG','Corinthians','Fluminense','Santos','Gremio','Internacional','Cruzeiro','Vasco','Botafogo','Fortaleza','Bragantino','Athletico-PR','Coritiba','Goias','Bahia','Ceara','Cuiaba','Sport']},
+  'Premier League':{country:'🏴󠁧󠁢󠁥󠁮󠁧󠁿',countryCode:'England',continent:'Europe',clubs:['Man City','Arsenal','Liverpool','Chelsea','Man Utd','Tottenham','Newcastle','Aston Villa','Brighton','West Ham','Fulham','Brentford','Crystal Palace','Wolves','Nottm Forest','Bournemouth','Everton','Leicester','Leeds','Southampton']},
+  'La Liga':{country:'🇪🇸',countryCode:'Spain',continent:'Europe',clubs:['Real Madrid','Barcelona','Atletico Madrid','Sevilla','Real Betis','Villarreal','Athletic Club','Valencia','Real Sociedad','Getafe','Osasuna','Celta Vigo','Rayo Vallecano','Almeria','Cadiz','Girona','Mallorca','Las Palmas','Leganes','Alaves']},
+  'Serie A':{country:'🇮🇹',countryCode:'Italy',continent:'Europe',clubs:['Inter','Milan','Juventus','Napoli','Roma','Lazio','Atalanta','Fiorentina','Torino','Bologna','Udinese','Sassuolo','Monza','Empoli','Lecce','Salernitana','Hellas Verona','Spezia','Cremonese','Sampdoria']},
+  'Bundesliga':{country:'🇩🇪',countryCode:'Germany',continent:'Europe',clubs:['Bayern','Dortmund','Leverkusen','Frankfurt','Union Berlin','Freiburg','Leipzig','Wolfsburg','Mainz','Hoffenheim','Bochum','Stuttgart','Augsburg','Hertha','Schalke','Cologne','Bremen','Monchengladbach','Dusseldorf','Nurnberg']},
+  'Ligue 1':{country:'FR',countryCode:'France',continent:'Europe',clubs:['PSG','Marseille','Lyon','Monaco','Lille','Rennes','Nice','Lens','Nantes','Montpellier','Strasbourg','Toulouse','Reims','Brest','Lorient','Metz','Le Havre','Auxerre','Saint-Etienne','Angers']},
+  'MLS':{country:'US',countryCode:'USA',continent:'North America',clubs:['Inter Miami','LA Galaxy','LAFC','Seattle Sounders','Atlanta United','New York City','New York Red Bulls','Orlando City','Austin FC','Portland Timbers','Columbus Crew','FC Cincinnati','Nashville SC','Charlotte FC','Chicago Fire','Dallas','Houston Dynamo','Sporting KC','Toronto FC','Vancouver Whitecaps']},
+  'Liga MX':{country:'MX',countryCode:'Mexico',continent:'North America',clubs:['America','Chivas','Cruz Azul','Pumas','Tigres','Monterrey','Toluca','Pachuca','Leon','Santos Laguna','Atlas','Puebla','Tijuana','Queretaro','Necaxa','Mazatlan','Juarez','Atletico San Luis']},
+  'Libertadores':{country:'SA',countryCode:'South America',continent:'South America',clubs:['Flamengo','Palmeiras','River Plate','Boca Juniors','Fluminense','Gremio','Internacional','Sao Paulo','Atletico-MG','Botafogo','Nacional','Penarol','Colo-Colo','Olimpia','LDU Quito','Independiente del Valle','Atletico Nacional','Junior','Cerro Porteno','Universitario']},
 };
 const CUP_DATA={
   'Copa do Brasil':{country:'🇧🇷',rounds:['Oitavas','Quartas','Semifinal','Final']},
@@ -676,6 +676,7 @@ function generateAIClubs(){
       const overall=clamp(rnd(strength-22,strength+2),52,94);
       clubs.push({
         name:cname,league:lname,country:ldata.country,
+        countryCode:ldata.countryCode,continent:ldata.continent,
         color:pick(CLUB_COLORS),badge:pick(BADGE_EMOJIS),
         overall,style:pick(TEAM_STYLES),form:[],
         budget:rnd(5,80)*1e6,
@@ -687,6 +688,33 @@ function generateAIClubs(){
   }
   G.allClubs=clubs;
   return clubs;
+}
+
+function getClubMeta(clubName){
+  if(clubName===G.club.name){
+    const l=LEAGUES_DATA[G.club.league||G.career?.league||G.league?.name]||LEAGUES_DATA['Brasileirão'];
+    return{name:clubName,country:G.club.country||l.countryCode,continent:G.club.continent||l.continent,league:G.club.league||G.league?.name};
+  }
+  const existing=(G.allClubs||[]).find(c=>c.name===clubName);
+  if(existing)return{name:existing.name,country:existing.countryCode||existing.country,continent:existing.continent,league:existing.league};
+  const found=Object.entries(LEAGUES_DATA).find(([,data])=>data.clubs.includes(clubName));
+  if(found){const[league,data]=found;return{name:clubName,country:data.countryCode,continent:data.continent,league};}
+  return{name:clubName,country:null,continent:null,league:null};
+}
+
+function validateLeagueTeams(league,team){
+  const meta=typeof team==='string'?getClubMeta(team):team;
+  if(league==='Copa do Brasil'||league==='Brasileirão')return meta.country==='Brazil'||meta.countryCode==='Brazil';
+  if(league==='Premier League')return meta.country==='England'||meta.countryCode==='England';
+  if(league==='La Liga')return meta.country==='Spain'||meta.countryCode==='Spain';
+  if(league==='Serie A')return meta.country==='Italy'||meta.countryCode==='Italy';
+  if(league==='Bundesliga')return meta.country==='Germany'||meta.countryCode==='Germany';
+  if(league==='Ligue 1')return meta.country==='France'||meta.countryCode==='France';
+  if(league==='MLS')return meta.country==='USA'||meta.countryCode==='USA';
+  if(league==='Liga MX')return meta.country==='Mexico'||meta.countryCode==='Mexico';
+  if(league==='Champions League')return meta.continent==='Europe';
+  if(league==='Libertadores')return meta.continent==='South America';
+  return true;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1119,10 +1147,10 @@ function improvePlayerSkills(player,steps){
 function initLeague(leagueName){
   const ldata=LEAGUES_DATA[leagueName];
   if(!ldata)return;
-  const clubs=[...ldata.clubs];
+  const clubs=[...ldata.clubs].filter(c=>validateLeagueTeams(leagueName,c));
   // My club replaces first if not already there
   const myClubName=G.club.name;
-  if(!clubs.includes(myClubName)){clubs[0]=myClubName;}
+  if(!clubs.includes(myClubName)&&validateLeagueTeams(leagueName,myClubName)){clubs[0]=myClubName;}
   const table=clubs.map(c=>{
     const isMe=c===myClubName;
     const base=isMe?null:G.allClubs.find(x=>x.name===c);
@@ -1268,8 +1296,12 @@ function initCupFull(cupName){
   const ldata=Object.values(LEAGUES_DATA);
   let pool=[G.club.name];
   ldata.forEach(l=>pool.push(...l.clubs.slice(0,3)));
-  pool=pool.slice(0,16);
-  while(pool.length<16)pool.push('Time '+pool.length);
+  pool=pool.filter(c=>c==='BYE'||validateLeagueTeams(cupName,c));
+  if(!validateLeagueTeams(cupName,G.club.name))pool=pool.filter(c=>c!==G.club.name);
+  pool=[...new Set(pool)].slice(0,16);
+  const eligible=[];
+  Object.values(LEAGUES_DATA).forEach(l=>eligible.push(...l.clubs.filter(c=>validateLeagueTeams(cupName,c))));
+  for(const c of eligible){if(pool.length>=16)break;if(!pool.includes(c))pool.push(c);}
   // Shuffle
   for(let i=pool.length-1;i>0;i--){const j=rnd(0,i);[pool[i],pool[j]]=[pool[j],pool[i]];}
   const data=LEAGUES_DATA[Object.keys(LEAGUES_DATA)[0]];
@@ -1423,6 +1455,11 @@ function normalizeCareerSystems(){
   G.managerProfile=G.managerProfile||{reputation:G.coach?.reputation||45,careerLevel:'iniciante',titlesWon:G.coach?.titles?.length||0,winRate:0,jobOffers:[]};
   G.coach=G.coach||{name:'Treinador',reputation:45,level:1,titles:[],jobSecurity:78};
   G.club=G.club||{name:'Meu Clube',budget:50e6};
+  const clubLeagueData=LEAGUES_DATA[G.club.league||G.career?.league||G.league?.name]||LEAGUES_DATA['Brasileirão'];
+  G.club.league=G.club.league||G.career?.league||G.league?.name||'Brasileirão';
+  G.club.country=G.club.country||clubLeagueData.countryCode;
+  G.club.continent=G.club.continent||clubLeagueData.continent;
+  G.club.logo=G.club.logo||G.club.badge;
   G.gameEconomy=G.gameEconomy||{money:G.club.budget||0,gold:350,inflationControl:1,goldToMoney:100000};
   G.gameEconomy.money=G.club.budget||G.gameEconomy.money||0;
   G.gameEconomy.gold=G.gameEconomy.gold??350;
@@ -2129,8 +2166,6 @@ function renderDashboard(){
   </div>
   <div class="cards-grid mb-3">
     <div class="stat-card"><div class="stat-val" style="color:${ovrColor(str.overall)}">${str.overall}</div><div class="stat-lbl">Força Geral</div></div>
-    <div class="stat-card"><div class="stat-val" style="color:var(--green)">${fmtM(G.club.budget)}</div><div class="stat-lbl">Orçamento</div></div>
-    <div class="stat-card"><div class="stat-val" style="color:var(--accent)">${G.gameEconomy?.gold??0}</div><div class="stat-lbl">Ouro</div></div>
     <div class="stat-card"><div class="stat-val">${G.squad.length}</div><div class="stat-lbl">Escalados</div></div>
     <div class="stat-card"><div class="stat-val">${G.players.length}</div><div class="stat-lbl">No Elenco</div></div>
     <div class="stat-card"><div class="stat-val">${G.stats.wins}</div><div class="stat-lbl">Vitórias</div></div>
@@ -2179,24 +2214,6 @@ function renderDashboard(){
       <button class="btn btn-ghost btn-sm mt-2" onclick="autoFill();nav('tactics')">⚡ Auto Escalar</button>
     </div>
   </div>
-  <div class="two-col mt-3">
-    <div class="card">
-      <div class="card-hdr">Modo Carreira</div>
-      <div class="small muted mb-1">Reputacao: <b style="color:var(--green)">${G.managerProfile?.reputation||45}</b> | Nivel: <b>${G.managerProfile?.careerLevel||'iniciante'}</b> | Win rate: <b>${G.managerProfile?.winRate||0}%</b> | Seguranca: <b style="color:${(G.coach?.jobSecurity||70)<35?'var(--red)':'var(--green)'}">${G.coach?.jobSecurity||70}%</b></div>
-      <div class="small muted">Titulares: ${G.squad.filter(Boolean).length}/11 | Reservas: ${G.bench.length}/${MAX_RESERVES} | Profissionais: ${G.players.length}/${MAX_MAIN_PLAYERS} | Base: ${G.baseYouth.length}/${MAX_YOUTH_PLAYERS}</div>
-      ${(G.managerProfile?.jobOffers||[]).length?`<div class="mt-2">${G.managerProfile.jobOffers.map(o=>`<div class="small">Proposta: <b>${o.club}</b> (${o.league})</div>`).join('')}</div>`:''}
-    </div>
-    <div class="card">
-      <div class="card-hdr">Propostas</div>
-      ${renderTransferInbox(3)}
-      <button class="btn btn-ghost btn-sm mt-2" onclick="generateTransferOffers(true);save();nav('dashboard')">Buscar propostas</button>
-    </div>
-  </div>
-  <div class="card mt-3">
-    <div class="card-hdr">Login diario</div>
-    <div class="small muted mb-2">Sequencia: <b>${G.user?.loginStreak||0}</b> dia(s) | Ultimo login: <b>${G.user?.lastLoginDate||'nunca'}</b> | Ouro: <b style="color:var(--accent)">${G.gameEconomy?.gold??0}</b></div>
-    <button class="btn btn-accent btn-sm" onclick="claimDailyReward()">Coletar recompensa</button>
-  </div>
   <div class="card mt-3">
     <div class="card-hdr">Noticias do Mundo</div>
     ${renderNewsFeed(6)}
@@ -2222,6 +2239,8 @@ function renderClub(){
     <div class="stat-card"><div class="stat-val">${fmtM(finance.salaries)}</div><div class="stat-lbl">Folha mensal</div></div>
     <div class="stat-card"><div class="stat-val" style="color:${finance.profit>=0?'var(--green)':'var(--red)'}">${fmtM(finance.profit)}</div><div class="stat-lbl">Projeção</div></div>
     <div class="stat-card"><div class="stat-val">${fmtM(squadCost)}</div><div class="stat-lbl">Valor do elenco</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:var(--accent)">${G.gameEconomy?.gold??0}</div><div class="stat-lbl">Ouro</div></div>
+    <div class="stat-card"><div class="stat-val">${G.players.length}/${MAX_MAIN_PLAYERS}</div><div class="stat-lbl">Profissionais</div></div>
   </div>
   <div class="two-col mb-3">
     <div class="card">
@@ -2239,6 +2258,18 @@ function renderClub(){
       ${(G.managerProfile.jobOffers||[]).map(o=>`<div class="small mt-1">Oferta de emprego: <b>${o.club}</b> (${o.league})</div>`).join('')||'<div class="small muted mt-1">Sem ofertas de emprego no momento.</div>'}
     </div>
   </div>
+  <div class="two-col mb-3">
+    <div class="card">
+      <div class="card-hdr">Login diario</div>
+      <div class="small muted mb-2">Sequencia: <b>${G.user?.loginStreak||0}</b> dia(s) | Ultimo login: <b>${G.user?.lastLoginDate||'nunca'}</b></div>
+      <button class="btn btn-accent btn-sm" onclick="claimDailyReward()">Coletar recompensa</button>
+    </div>
+    <div class="card">
+      <div class="card-hdr">Propostas recebidas</div>
+      ${renderTransferInbox(4)}
+      <button class="btn btn-ghost btn-sm mt-2" onclick="generateTransferOffers(true);save();nav('club')">Buscar propostas</button>
+    </div>
+  </div>
   <div class="card mb-3">
     <div class="card-hdr">Contratos do elenco</div>
     ${expiring.map(p=>{
@@ -2251,10 +2282,7 @@ function renderClub(){
       </div>`;
     }).join('')}
   </div>
-  <div class="two-col">
-    <div class="card"><div class="card-hdr">Propostas recebidas</div>${renderTransferInbox(5)}</div>
-    <div class="card"><div class="card-hdr">Noticias do clube</div>${renderNewsFeed(5)}</div>
-  </div>`;
+  <div class="card"><div class="card-hdr">Noticias do clube</div>${renderNewsFeed(5)}</div>`;
 }
 
 // ── TACTICS / FIELD ────────────────────────────────────────
@@ -3528,28 +3556,44 @@ function showMatchModal(data){
 // ═══════════════════════════════════════════════════════════
 function showClubSetup(){
   let selBadge=G.club.badge,selColor=G.club.color;
+  const currentLeague=G.career?.league||G.league?.name||'Brasileirão';
   document.getElementById('setupBody').innerHTML=`
   <div class="mb-2">
-    <div class="very-small muted mb-1">Nome do Clube</div>
-    <input class="setup-input" id="clubNameInput" value="${G.club.name}" placeholder="Nome do clube">
-  </div>
-  <div class="mb-2">
-    <div class="very-small muted mb-1">Escudo</div>
-    <div class="badge-picker">${BADGE_EMOJIS.map(b=>`<div class="badge-opt ${b===selBadge?'sel':''}" onclick="this.parentElement.querySelectorAll('.badge-opt').forEach(x=>x.classList.remove('sel'));this.classList.add('sel');_setupBadge='${b}'">${b}</div>`).join('')}</div>
-  </div>
-  <div class="mb-2">
-    <div class="very-small muted mb-1">Cor Principal</div>
-    <div class="color-picker-row">${CLUB_COLORS.map(c=>`<div class="color-opt ${c===selColor?'sel':''}" style="background:${c}" onclick="this.parentElement.querySelectorAll('.color-opt').forEach(x=>x.classList.remove('sel'));this.classList.add('sel');_setupColor='${c}'"></div>`).join('')}</div>
-  </div>
-  <div class="mb-2">
-    <div class="very-small muted mb-1">Orçamento Inicial</div>
-    <select class="setup-input" id="careerLeagueInput" onchange="selectLeagueMode(this.value)">
-      ${Object.keys(LEAGUES_DATA).map(l=>`<option value="${l}" ${((G.career?.league||G.league?.name)===l)?'selected':''}>${LEAGUES_DATA[l].country} ${l}</option>`).join('')}
+    <div class="very-small muted mb-1">Modo da carreira</div>
+    <select class="setup-input" id="careerModeInput" onchange="document.getElementById('createClubFields').style.display=this.value==='create'?'block':'none';document.getElementById('existingClubFields').style.display=this.value==='existing'?'block':'none'">
+      <option value="existing">Escolher time existente</option>
+      <option value="create">Criar novo clube</option>
     </select>
+  </div>
+  <div class="mb-2">
+    <div class="very-small muted mb-1">Liga inicial</div>
+    <select class="setup-input" id="careerLeagueInput" onchange="updateExistingClubOptions(this.value)">
+      ${Object.keys(LEAGUES_DATA).filter(l=>l!=='Libertadores').map(l=>`<option value="${l}" ${currentLeague===l?'selected':''}>${LEAGUES_DATA[l].country} ${l}</option>`).join('')}
+    </select>
+  </div>
+  <div id="existingClubFields" class="mb-2">
+    <div class="very-small muted mb-1">Time existente</div>
+    <select class="setup-input" id="existingClubInput"></select>
+  </div>
+  <div id="createClubFields" style="display:none">
+    <div class="mb-2">
+      <div class="very-small muted mb-1">Nome do Clube</div>
+      <input class="setup-input" id="clubNameInput" value="${G.club.name}" placeholder="Nome do clube">
+    </div>
+    <div class="mb-2">
+      <div class="very-small muted mb-1">Logo / Escudo</div>
+      <div class="badge-picker">${BADGE_EMOJIS.map(b=>`<div class="badge-opt ${b===selBadge?'sel':''}" onclick="this.parentElement.querySelectorAll('.badge-opt').forEach(x=>x.classList.remove('sel'));this.classList.add('sel');_setupBadge='${b}'">${b}</div>`).join('')}</div>
+      <input class="setup-input mt-1" id="clubLogoUpload" type="file" accept="image/*" onchange="handleLogoUpload(this)">
+    </div>
+    <div class="mb-2">
+      <div class="very-small muted mb-1">Cor Principal</div>
+      <div class="color-picker-row">${CLUB_COLORS.map(c=>`<div class="color-opt ${c===selColor?'sel':''}" style="background:${c}" onclick="this.parentElement.querySelectorAll('.color-opt').forEach(x=>x.classList.remove('sel'));this.classList.add('sel');_setupColor='${c}'"></div>`).join('')}</div>
+    </div>
   </div>
   <div class="mb-2">
     <div class="very-small muted mb-1">Orcamento Inicial</div>
     <select class="setup-input" id="budgetInput">
+      <option value="random">Aleatorio realista</option>
       <option value="20000000">€20M — Desafiador</option>
       <option value="50000000" ${G.club.budget===50e6?'selected':''}>€50M — Normal</option>
       <option value="100000000" ${G.club.budget===100e6?'selected':''}>€100M — Confortável</option>
@@ -3557,23 +3601,50 @@ function showClubSetup(){
     </select>
   </div>
   <button class="btn btn-green btn-lg" style="width:100%" onclick="saveClubSetup()">✅ Confirmar</button>`;
-  const careerLeagueInput=document.getElementById('careerLeagueInput');
-  if(careerLeagueInput?.previousElementSibling)careerLeagueInput.previousElementSibling.textContent='Liga Inicial / Modo Carreira';
+  updateExistingClubOptions(currentLeague);
   openModal('overlaySetup');
 }
 
-let _setupBadge='⚽',_setupColor='#22c55e';
+let _setupBadge='⚽',_setupColor='#22c55e',_setupLogoData=null;
+function handleLogoUpload(input){
+  const file=input.files&&input.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=()=>{_setupLogoData=reader.result;toast('Logo carregado');};
+  reader.readAsDataURL(file);
+}
+function updateExistingClubOptions(leagueName){
+  const sel=document.getElementById('existingClubInput');if(!sel)return;
+  const clubs=(LEAGUES_DATA[leagueName]?.clubs||[]).filter(c=>validateLeagueTeams(leagueName,c));
+  sel.innerHTML=clubs.map(c=>`<option value="${c}" ${G.club.name===c?'selected':''}>${c}</option>`).join('');
+}
+
 function saveClubSetup(){
-  G.club.name=document.getElementById('clubNameInput').value||G.club.name;
-  G.club.badge=_setupBadge||G.club.badge;
-  G.club.color=_setupColor||G.club.color;
   const leagueInput=document.getElementById('careerLeagueInput');
+  const leagueName=leagueInput?.value||G.league.name||'Brasileirão';
+  const ldata=LEAGUES_DATA[leagueName]||LEAGUES_DATA['Brasileirão'];
+  const mode=document.getElementById('careerModeInput')?.value||'existing';
+  if(mode==='existing'){
+    const clubName=document.getElementById('existingClubInput')?.value||ldata.clubs[0];
+    const ai=G.allClubs.find(c=>c.name===clubName);
+    G.club.name=clubName;
+    G.club.badge=ai?.badge||pick(BADGE_EMOJIS);
+    G.club.color=ai?.color||pick(CLUB_COLORS);
+  }else{
+    G.club.name=document.getElementById('clubNameInput')?.value||G.club.name;
+    G.club.badge=_setupBadge||G.club.badge;
+    G.club.logo=_setupLogoData||G.club.badge;
+    G.club.color=_setupColor||G.club.color;
+  }
+  G.club.league=leagueName;
+  G.club.country=ldata.countryCode;
+  G.club.continent=ldata.continent;
   if(leagueInput){
-    selectLeagueMode(leagueInput.value);
-    if(!G.league.started)initLeague(leagueInput.value);
+    selectLeagueMode(leagueName);
+    if(!G.league.started)initLeague(leagueName);
   }
   const bv=document.getElementById('budgetInput');
-  if(bv)G.club.budget=+bv.value;
+  if(bv)G.club.budget=bv.value==='random'?rnd(18,95)*1e6:+bv.value;
+  G.club.squad=G.players;
   _setupBadge=G.club.badge;_setupColor=G.club.color;
   save();updateTopbar();closeModal('overlaySetup');
   toast('✅ Clube configurado!');nav('dashboard');
