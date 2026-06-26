@@ -365,7 +365,6 @@ tr.my-club td:first-child{border-left:3px solid var(--green)}
     <div class="sb-section">
       <div class="sb-section-label">Transferências</div>
       <div class="sb-item" data-page="market" onclick="nav('market')"><span class="icon">💼</span>Mercado</div>
-      <div class="sb-item" data-page="sandbox" onclick="nav('sandbox')"><span class="icon">🆓</span>Modo Livre</div>
     </div>
     <div class="sb-section">
       <div class="sb-section-label">Estatísticas</div>
@@ -2860,14 +2859,27 @@ function simulateCustomTournamentRound(){
 // ── MARKET ─────────────────────────────────────────────────
 function renderMarket(){
   const f=_marketFilter;
-  let players=[...G.market].filter(p=>{
+  const marketPool=[...G.market].map(normalizeMarketPlayer);
+  let players=marketPool.filter(p=>{
+    const free=isPlayerFree(p);
+    if(f.source==='free'&&!free)return false;
+    if(f.source==='transfer'&&free)return false;
     if(f.pos&&p.position!==f.pos)return false;
     if(f.q&&!p.name.toLowerCase().includes(f.q.toLowerCase()))return false;
     if(f.minOvr&&p.overall<f.minOvr)return false;
+    if(f.maxAge&&p.age>f.maxAge)return false;
+    if(f.minAge&&p.age<f.minAge)return false;
     return true;
-  }).sort((a,b)=>b.overall-a.overall);
+  });
+  players.sort((a,b)=>{
+    if(f.sort==='age')return a.age-b.age||b.overall-a.overall;
+    if(f.sort==='value')return (b.transferValue||b.marketValue||0)-(a.transferValue||a.marketValue||0);
+    if(f.sort==='salary')return (b.salaryDemand||b.salario||0)-(a.salaryDemand||a.salario||0);
+    return b.overall-a.overall;
+  });
+  const freeCount=marketPool.filter(isPlayerFree).length;
   return`<div class="page-hdr">
-    <div><div class="page-title">💼 Mercado (${G.market.length})</div><div class="page-sub">Orçamento: ${fmtM(G.club.budget)}</div></div>
+    <div><div class="page-title">💼 Mercado (${players.length})</div><div class="page-sub">Orçamento: ${fmtM(G.club.budget)} · Livres realistas: ${freeCount}</div></div>
     <div class="flex-row"><button class="btn btn-ghost btn-sm" onclick="generateTransferOffers(true);save();nav('market')">Gerar propostas</button><button class="btn btn-ghost btn-sm" onclick="refreshMarket()">🔄 Atualizar</button></div>
   </div>
   <div class="card mb-2">
@@ -2879,6 +2891,11 @@ function renderMarket(){
     ${renderNegotiationCenter(6)}
   </div>
   <div class="filters">
+    <select class="filter-select" onchange="_marketFilter.source=this.value;nav('market')">
+      <option value="all"${f.source==='all'?' selected':''}>Todos</option>
+      <option value="transfer"${f.source==='transfer'?' selected':''}>Com contrato</option>
+      <option value="free"${f.source==='free'?' selected':''}>Livres</option>
+    </select>
     <input class="filter-input" placeholder="🔍 Buscar..." value="${f.q}" oninput="_marketFilter.q=this.value;nav('market')">
     <select class="filter-select" onchange="_marketFilter.pos=this.value;nav('market')">
       <option value="">Todas posições</option>
@@ -2888,6 +2905,19 @@ function renderMarket(){
       <option value="0">Qualquer OVR</option>
       <option value="60">60+</option><option value="70">70+</option>
       <option value="80">80+</option><option value="90">90+</option>
+    </select>
+    <select class="filter-select" onchange="_marketFilter.maxAge=+this.value;nav('market')">
+      <option value="0">Qualquer idade</option>
+      <option value="21"${f.maxAge===21?' selected':''}>Sub-21</option>
+      <option value="25"${f.maxAge===25?' selected':''}>Até 25</option>
+      <option value="30"${f.maxAge===30?' selected':''}>Até 30</option>
+      <option value="34"${f.maxAge===34?' selected':''}>Até 34</option>
+    </select>
+    <select class="filter-select" onchange="_marketFilter.sort=this.value;nav('market')">
+      <option value="overall"${f.sort==='overall'?' selected':''}>Ordenar OVR</option>
+      <option value="value"${f.sort==='value'?' selected':''}>Ordenar valor</option>
+      <option value="salary"${f.sort==='salary'?' selected':''}>Ordenar salário</option>
+      <option value="age"${f.sort==='age'?' selected':''}>Ordenar idade</option>
     </select>
   </div>
   <div class="gap-grid">
@@ -2901,22 +2931,22 @@ function renderMarket(){
         <span class="badge b-ovr" style="color:${ovrColor(p.overall)};background:${ovrColor(p.overall)}22">⭐${p.overall}</span>
       </div>
       <div class="pcard-stats">
-        <div class="pstat">Valor: <b style="color:var(--green)">${isFreeAgent(p)?'Livre':fmtM(p.transferValue||p.valorMercado)}</b></div>
+        <div class="pstat">Valor: <b style="color:var(--green)">${isPlayerFree(p)?'Livre':fmtM(p.transferValue||p.valorMercado)}</b></div>
         <div class="pstat">Salário pedido: <b>${fmtM(p.salaryDemand||p.salario)}</b></div>
         <div class="pstat">Pot: <b>${p.potential}</b></div>
         <div class="pstat">Clube: <b>${p.club}</b></div>
       </div>
       <div class="pcard-actions" onclick="event.stopPropagation()">
-        <button class="btn btn-green btn-sm" onclick="buyPlayer(${p.id})">${isFreeAgent(p)?'Negociar contrato':'Fazer proposta'}</button>
-        <button class="btn btn-blue btn-sm" onclick="loanMarketPlayer(${p.id})">Emprestimo</button>
+        <button class="btn btn-green btn-sm" onclick="openPlayer(${p.id})">${isPlayerFree(p)?'Negociar contrato':'Fazer proposta'}</button>
+        ${isPlayerFree(p)?'':`<button class="btn btn-blue btn-sm" onclick="loanMarketPlayer(${p.id})">Emprestimo</button>`}
         <button class="btn btn-ghost btn-sm" onclick="openPlayer(${p.id})">👁 Ver</button>
       </div>
     </div>`).join('')}
-    ${players.length===0?'<div class="small muted" style="grid-column:1/-1;text-align:center;padding:30px">Nenhum jogador. Atualize o mercado.</div>':''}
+    ${players.length===0?'<div class="small muted" style="grid-column:1/-1;text-align:center;padding:30px">Nenhum jogador encontrado. Atualize o mercado ou ajuste os filtros.</div>':''}
   </div>`;
 }
 
-let _marketFilter={pos:'',q:'',minOvr:0};
+let _marketFilter={pos:'',q:'',minOvr:0,minAge:0,maxAge:0,source:'all',sort:'overall'};
 function refreshMarket(){
   const newP=[];for(let i=0;i<40;i++)newP.push(createMarketPlayer());
   G.market=[...G.market.filter(p=>!G.players.find(x=>x.id===p.id)).slice(0,60),...newP];
@@ -2961,6 +2991,35 @@ function buyPlayer(id){
     toast(c?'Clube aceitou. Negocie o contrato.':'Negociacao iniciada.');
   }else if(n?.status==='countered')toast('Clube fez contra-proposta.');
   else if(n?.status==='rejected')toast('Proposta recusada pelo clube.','err');
+}
+
+function submitPlayerProposal(id){
+  const p=G.market.find(x=>x.id===id);
+  if(!p){toast('Jogador nao encontrado','err');return;}
+  if(G.players.length>=MAX_MAIN_PLAYERS){toast('Elenco principal cheio (25)','err');return;}
+  normalizeMarketPlayer(p);
+  const offerEl=document.getElementById('proposalValueInput');
+  const salaryEl=document.getElementById('proposalSalaryInput');
+  const yearsEl=document.getElementById('proposalYearsInput');
+  const offerValue=Math.max(0,Number(offerEl?.value||0));
+  const salaryOffer=Math.max(0,Number(salaryEl?.value||p.salaryDemand||p.salario||0));
+  const years=clamp(Number(yearsEl?.value||3),1,5);
+  if(!isPlayerFree(p)&&offerValue>G.club.budget){toast('Orcamento insuficiente para proposta','err');return;}
+  const n=startTransferNegotiation(id,isPlayerFree(p)?0:offerValue);
+  if(!n){return;}
+  const c=(G.contractNegotiations||[]).find(x=>x.transferId===n.id);
+  if(c){
+    negotiateContract(c.id,{salaryOffer,contractLength:years});
+    toast(c.playerSatisfaction>=78?'Proposta enviada e jogador inclinado a aceitar.':'Proposta enviada. Negociacao aberta.');
+  }else if(n.status==='countered'){
+    toast(`Clube pediu ${fmtM(n.counterOffer)} em contra-proposta.`);
+  }else if(n.status==='rejected'){
+    toast('Proposta recusada. Tente melhorar o valor.','err');
+  }else{
+    toast('Proposta enviada.');
+  }
+  closeModal('overlayPlayer');
+  nav('market');
 }
 
 // ── SANDBOX ────────────────────────────────────────────────
@@ -3209,7 +3268,7 @@ function openPlayer(id){
   <div class="two-col mb-2">
     <div class="card" style="padding:10px">
       <div class="very-small muted mb-2">Ficha Técnica</div>
-      ${[['Valor mercado',fmtM(p.marketValue||p.valorMercado),'var(--green)'],['Valor transf.',isFreeAgent(p)?'Livre':fmtM(p.transferValue||p.valorMercado),'var(--green)'],['Salário pedido',fmtM(p.salaryDemand||p.salario),'var(--red)'],['Contrato',(p.contract?.duration??p.contract?.years??0)+' ano(s)','var(--blue3)'],['Status',p.contract?.status||'active','var(--accent)'],['Moral',(p.morale??p.moral)+'%','var(--accent)'],['Cond.',p.condicionamento+'%','var(--blue3)']].map(([l,v,c])=>`<div class="flex-between small mb-1"><span class="muted">${l}</span><span style="color:${c};font-weight:700">${v}</span></div>`).join('')}
+      ${[['Valor mercado',fmtM(p.marketValue||p.valorMercado),'var(--green)'],['Valor transf.',isPlayerFree(p)?'Livre':fmtM(p.transferValue||p.valorMercado),'var(--green)'],['Salário pedido',fmtM(p.salaryDemand||p.salario),'var(--red)'],['Contrato',(p.contract?.duration??p.contract?.years??0)+' ano(s)','var(--blue3)'],['Status',p.contract?.status||'active','var(--accent)'],['Moral',(p.morale??p.moral)+'%','var(--accent)'],['Cond.',p.condicionamento+'%','var(--blue3)']].map(([l,v,c])=>`<div class="flex-between small mb-1"><span class="muted">${l}</span><span style="color:${c};font-weight:700">${v}</span></div>`).join('')}
       ${p.wantsOut?'<div class="small" style="color:var(--red)">Quer sair do clube</div>':''}
     </div>
     <div class="card" style="padding:10px">
@@ -3217,6 +3276,19 @@ function openPlayer(id){
       ${[['Gols',ps.goals,'var(--green)'],['Assistências',ps.assists,'var(--blue3)'],['Amarelos',ps.yellows,'var(--accent)'],['Vermelhos',ps.reds,'var(--red)']].map(([l,v,c])=>`<div class="flex-between small mb-1"><span class="muted">${l}</span><span style="color:${c};font-weight:700">${v}</span></div>`).join('')}
     </div>
   </div>
+  ${inMarket&&!inOwn?`<div class="card mb-2" style="padding:10px">
+    <div class="card-hdr">Proposta individual</div>
+    <div class="small muted mb-2">${isPlayerFree(p)?'Jogador livre: negocie salario, duracao e luvas.':'Clube atual: envie um valor de transferencia e depois negocie o contrato.'}</div>
+    <div class="filters" style="margin-bottom:8px">
+      <input class="filter-input" id="proposalValueInput" type="number" min="0" step="100000" value="${isPlayerFree(p)?0:(p.transferValue||p.marketValue||p.valorMercado||0)}" placeholder="Valor da proposta">
+      <input class="filter-input" id="proposalSalaryInput" type="number" min="0" step="10000" value="${p.salaryDemand||p.salario||0}" placeholder="Salario">
+      <select class="filter-select" id="proposalYearsInput">
+        ${[1,2,3,4,5].map(y=>`<option value="${y}" ${((p.age<24&&y===4)||(p.age>=24&&p.age<=31&&y===3)||(p.age>31&&y===2))?'selected':''}>${y} ano${y>1?'s':''}</option>`).join('')}
+      </select>
+    </div>
+    <div class="flex-between small mb-2"><span class="muted">Valor sugerido</span><b style="color:var(--green)">${isPlayerFree(p)?'Livre':fmtM(p.transferValue||p.marketValue||p.valorMercado)}</b></div>
+    <button class="btn btn-green btn-sm" onclick="submitPlayerProposal(${id})">Enviar proposta</button>
+  </div>`:''}
   <div class="mb-2">
     <div class="very-small muted mb-1">Radar de Habilidades</div>
     <div class="skills-radar-wrap"><canvas id="radarCV"></canvas></div>
@@ -3234,7 +3306,7 @@ function openPlayer(id){
               :`<button class="btn btn-green btn-sm" onclick="addToSquad(${id});closeModal('overlayPlayer')">+ Escalar</button>`}
       <button class="btn btn-blue btn-sm" onclick="renewContract(${id});closeModal('overlayPlayer')">Renovar</button>
       <button class="btn btn-ghost btn-sm" onclick="sellPlayerPrompt(${id});closeModal('overlayPlayer')">💰 Vender</button>`:''}
-    ${inMarket&&!inOwn?`<button class="btn btn-blue btn-sm" onclick="buyPlayer(${id});closeModal('overlayPlayer')">${isFreeAgent(p)?'Negociar contrato':'Fazer proposta'} ${isFreeAgent(p)?'':fmtM(p.transferValue||p.valorMercado)}</button><button class="btn btn-ghost btn-sm" onclick="loanMarketPlayer(${id});closeModal('overlayPlayer')">Emprestimo</button>`:''}
+    ${inMarket&&!inOwn?`<button class="btn btn-blue btn-sm" onclick="submitPlayerProposal(${id})">${isPlayerFree(p)?'Negociar contrato':'Enviar proposta'}</button>${isPlayerFree(p)?'':`<button class="btn btn-ghost btn-sm" onclick="loanMarketPlayer(${id});closeModal('overlayPlayer')">Emprestimo</button>`}`:''}
     ${!inOwn&&!inMarket?`<button class="btn btn-green btn-sm" onclick="sandboxAddToOwn(${id});closeModal('overlayPlayer')">+ Adquirir (Livre)</button>
       <button class="btn btn-ghost btn-sm" onclick="sandboxAdd(${id});closeModal('overlayPlayer')">⚽ Escalar Agora</button>`:''}
   </div>`;
