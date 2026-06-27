@@ -503,6 +503,7 @@ const LEAGUES_DATA={
 const CUP_DATA={
   'Copa do Brasil':{country:'🇧🇷',rounds:['Oitavas','Quartas','Semifinal','Final']},
   'Libertadores':{country:'🌎',rounds:['Oitavas','Quartas','Semifinal','Final']},
+  'Champions League':{country:'🇪🇺',rounds:['Oitavas','Quartas','Semifinal','Final']},
 };
 const CLUB_COLORS=['#ef4444','#3b82f6','#22c55e','#f59e0b','#a855f7','#ec4899','#06b6d4','#f97316','#84cc16','#14b8a6','#8b5cf6','#e11d48','#0ea5e9','#65a30d'];
 const BADGE_EMOJIS=['⚽','🦁','🦅','🐯','🦊','🐉','⭐','🔴','🔵','🟢','🏆','🛡️','⚔️','🌟','🦈','🐺'];
@@ -536,6 +537,7 @@ let G={
   news:[],
   newsFeed:[],
   transferRumors:[],
+  worldTransfers:[],
   transferInbox:[],
   transferNegotiations:[],
   contractNegotiations:[],
@@ -546,6 +548,7 @@ let G={
   user:{loginStreak:0,lastLoginDate:null,lastReward:null},
   managerProfile:{reputation:45,careerLevel:'iniciante',titlesWon:0,winRate:0,jobOffers:[]},
   coach:{name:'Treinador',reputation:45,level:1,titles:[],jobSecurity:78},
+  coachDecisions:{rotation:false,youthFocus:false,protectStars:false,marketSale:false,tacticalShift:false,lastDecision:null},
   nextPlayerId:10000,
 };
 
@@ -565,6 +568,17 @@ const MAX_SQUAD_SIZE=35;
 const MAX_RESERVES=9;
 const LEAGUE_DIFFICULTY={'Premier League':1.35,'La Liga':1.25,'Serie A':1.18,'Bundesliga':1.18,'Brasileirão':1.12,'Ligue 1':1.08,'MLS':.92,'Liga MX':.95,'Libertadores':1.3};
 const leagueStrength={'EPL':95,'Premier League':95,'LaLiga':93,'La Liga':93,'SerieA':88,'Serie A':88,'Bundesliga':90,'Ligue1':82,'Ligue 1':82,'Brasileirão':78,'Brasileirao':78,'MLS':70,'LigaMX':72,'Liga MX':72,'Libertadores':84};
+const DERBY_RIVALS={
+  'Flamengo':['Fluminense','Vasco','Botafogo'],
+  'Palmeiras':['Corinthians','Sao Paulo','Santos'],
+  'Corinthians':['Palmeiras','Sao Paulo','Santos'],
+  'Real Madrid':['Barcelona','Atletico Madrid'],
+  'Barcelona':['Real Madrid','Atletico Madrid'],
+  'Man City':['Man Utd','Liverpool'],
+  'Liverpool':['Man Utd','Man City'],
+  'Boca Juniors':['River Plate'],
+  'River Plate':['Boca Juniors']
+};
 
 function toast(msg,type='ok'){
   const el=document.getElementById('toastEl');
@@ -714,6 +728,11 @@ function validateLibertadoresTeams(team){
   return true;
 }
 
+function validateChampionsTeams(team){
+  const meta=typeof team==='string'?getClubMeta(team):(team||{});
+  return meta.continent==='Europe';
+}
+
 function validateLeagueTeams(league,team){
   const meta=typeof team==='string'?getClubMeta(team):team;
   if(league==='Copa do Brasil'||league==='Brasileirão')return meta.country==='Brazil'||meta.countryCode==='Brazil';
@@ -724,7 +743,8 @@ function validateLeagueTeams(league,team){
   if(league==='Ligue 1')return meta.country==='France'||meta.countryCode==='France';
   if(league==='MLS')return meta.country==='USA'||meta.countryCode==='USA';
   if(league==='Liga MX')return meta.country==='Mexico'||meta.countryCode==='Mexico';
-  if(league==='Libertadores'||league==='Champions League')return validateLibertadoresTeams(meta);
+  if(league==='Libertadores')return validateLibertadoresTeams(meta);
+  if(league==='Champions League')return validateChampionsTeams(meta);
   return true;
 }
 
@@ -997,14 +1017,32 @@ function generateGenericLineup(prefix){
   return Array.from({length:11},(_,i)=>({name:prefix+' Player '+(i+1),id:-i-1,position:i===0?'GOL':i<5?'ZAG':'MC'}));
 }
 
+function isDerbyMatch(homeName,awayName){
+  return (DERBY_RIVALS[homeName]||[]).includes(awayName)||(DERBY_RIVALS[awayName]||[]).includes(homeName);
+}
+
+function resolveMatchAtmosphere(home,away,settings={}){
+  if(settings.neutral)return{homeAdv:0,pressure:0,derby:false,label:'Campo neutro'};
+  const derby=!!settings.derby||isDerbyMatch(home.name,away.name);
+  const formPressure=(G.form||[]).slice(-3).filter(r=>r==='L').length*0.8;
+  const fanMood=((G.club?.satisfaction?.fans??70)-70)/18;
+  const homeIsUser=home.name===G.club.name;
+  const pressure=clamp((derby?3.2:1.2)+formPressure+(homeIsUser?Math.max(0,-fanMood):0),0,8);
+  const crowdBoost=homeIsUser?fanMood:0;
+  const homeAdv=clamp(2.6+crowdBoost+(derby?1.4:0)-pressure*.16,1,7);
+  const label=derby?'Clássico de alta pressão':homeIsUser?'Torcida empurra o time':'Mando de campo pesa';
+  return{homeAdv,pressure,derby,label};
+}
+
 function simulateMatch(home,away,settings={}){
   const hPlayers=home.squad&&home.squad.length?home.squad:generateGenericLineup(home.name||'Home');
   const aPlayers=away.squad&&away.squad.length?away.squad:generateGenericLineup(away.name||'Away');
   const hPerf=calculateTeamPerformance({...home,squad:hPlayers});
   const aPerf=calculateTeamPerformance({...away,squad:aPlayers});
-  const hHomeAdv=settings.neutral?0:clamp(2.5+(hPerf.morale-70)/18-(hPerf.fatigue||0)/60,1,5.5);
+  const atmosphere=resolveMatchAtmosphere(home,away,settings);
+  const hHomeAdv=settings.neutral?0:clamp(atmosphere.homeAdv+(hPerf.morale-70)/22-(hPerf.fatigue||0)/70,0,7);
   const hStr=clamp(hPerf.performance+hHomeAdv,10,110);
-  const aStr=clamp(aPerf.performance-hHomeAdv*.35,10,110);
+  const aStr=clamp(aPerf.performance-hHomeAdv*.35-atmosphere.pressure*.12,10,110);
   const hAttack=hPerf.attack*(1+hPerf.profile.risk*.25)+hHomeAdv*.8;
   const aAttack=aPerf.attack*(1+aPerf.profile.risk*.25);
   const hDefense=aPerf.defense+(aPerf.gk||65)*.18;
@@ -1024,6 +1062,9 @@ function simulateMatch(home,away,settings={}){
   const hFouls=clamp(Math.round(8+hPerf.profile.press*16+rnd(-2,5)+(hPerf.fatigue||0)/18),3,24);
   const aFouls=clamp(Math.round(8+aPerf.profile.press*16+rnd(-2,5)+(aPerf.fatigue||0)/18),3,24);
   const events=[];
+  if(!settings.neutral){
+    events.push({t:1,team:'home',type:'atmosphere',player:null,text:atmosphere.label});
+  }
   const scorerMap={home:{},away:{}};
   const assistMap={home:{},away:{}};
   const addGoal=(team,t)=>{
@@ -1102,7 +1143,7 @@ function simulateMatch(home,away,settings={}){
     styles:[hPerf.style,aPerf.style],
     formImpact:[Number(hPerf.formImpact.bonus.toFixed(1)),Number(aPerf.formImpact.bonus.toFixed(1))]
   };
-  return{hGoals,aGoals,events,matchStats,hStr:Math.round(hStr),aStr:Math.round(aStr),hPerformance:hPerf,aPerformance:aPerf};
+  return{hGoals,aGoals,events,matchStats,hStr:Math.round(hStr),aStr:Math.round(aStr),hPerformance:hPerf,aPerformance:aPerf,atmosphere};
 }
 
 function isOwnPlayer(player){
@@ -1355,7 +1396,6 @@ function initCup(cupName,pool){
 }
 
 function initCupFull(cupName){
-  if(cupName==='Champions League')cupName='Libertadores';
   const ldata=Object.values(LEAGUES_DATA);
   let pool=[G.club.name];
   if(cupName==='Libertadores'){
@@ -1527,6 +1567,7 @@ function normalizeCareerSystems(){
   G.news=G.news||[];
   G.newsFeed=G.newsFeed||G.news||[];
   G.transferRumors=G.transferRumors||[];
+  G.worldTransfers=G.worldTransfers||[];
   G.transferInbox=G.transferInbox||[];
   G.transferNegotiations=G.transferNegotiations||[];
   G.contractNegotiations=G.contractNegotiations||[];
@@ -1534,6 +1575,7 @@ function normalizeCareerSystems(){
   G.liveMatches=G.liveMatches||[];
   G.managerProfile=G.managerProfile||{reputation:G.coach?.reputation||45,careerLevel:'iniciante',titlesWon:G.coach?.titles?.length||0,winRate:0,jobOffers:[]};
   G.coach=G.coach||{name:'Treinador',reputation:45,level:1,titles:[],jobSecurity:78};
+  G.coachDecisions=G.coachDecisions||{rotation:false,youthFocus:false,protectStars:false,marketSale:false,tacticalShift:false,lastDecision:null};
   G.club=G.club||{name:'Meu Clube',budget:50e6};
   const clubLeagueData=LEAGUES_DATA[G.club.league||G.career?.league||G.league?.name]||LEAGUES_DATA['Brasileirão'];
   G.club.league=G.club.league||G.career?.league||G.league?.name||'Brasileirão';
@@ -1917,6 +1959,94 @@ function generateTransferRumors(players=G.players,clubs=G.allClubs){
   return G.transferRumors;
 }
 
+function simulateAIClubMarket(force=false){
+  normalizeCareerSystems();
+  const clubs=(G.allClubs||[]).filter(c=>c.name!==G.club.name);
+  if(!clubs.length)return[];
+  const moves=[];
+  const attempts=force?rnd(2,5):rnd(0,2);
+  for(let i=0;i<attempts;i++){
+    if(Math.random()>(force ? .75 : .28))continue;
+    const buyer=pick(clubs);
+    const seller=pick(clubs.filter(c=>c.name!==buyer.name));
+    if(!buyer||!seller)continue;
+    const overall=clamp(Math.round(((buyer.overall||70)+(seller.overall||70))/2)+rnd(-10,8),55,91);
+    const p=createPlayer({overall,club:seller.name,contractClub:seller.name,contractStatus:'active',league:seller.league});
+    const value=calculateTransferValue(p);
+    buyer.budget=Math.max(0,(buyer.budget||40e6)-value);
+    seller.budget=(seller.budget||30e6)+value;
+    const move={id:Date.now()+rnd(1,9999),season:G.season,player:p.name,overall:p.overall,from:seller.name,to:buyer.name,value,date:new Date().toLocaleDateString('pt-BR')};
+    moves.push(move);
+    G.worldTransfers=[move,...(G.worldTransfers||[])].slice(0,40);
+    generateNews({type:'transfer',text:`${buyer.name} fecha com ${p.name} vindo do ${seller.name} por ${fmtM(value)}`});
+  }
+  return moves;
+}
+
+function applyCoachDecision(decision){
+  normalizeCareerSystems();
+  G.coachDecisions=G.coachDecisions||{};
+  G.coachDecisions.lastDecision={decision,season:G.season,date:new Date().toLocaleDateString('pt-BR')};
+  if(decision==='rotation'){
+    G.coachDecisions.rotation=true;
+    (G.squad||[]).forEach(p=>{normalizePlayerState(p);p.fatigue=clamp(p.fatigue-rnd(10,22),0,100);p.condicionamento=clamp(100-p.fatigue,0,100);p.confidence=clamp(p.confidence-1,0,100);});
+    (G.bench||[]).forEach(p=>{p.happiness=clamp((p.happiness??70)+4,0,100);p.confidence=clamp((p.confidence??70)+2,0,100);});
+    generateNews({type:'press',text:'Treinador decide poupar titulares e divide opinioes antes da rodada'});
+  }else if(decision==='youthFocus'){
+    G.coachDecisions.youthFocus=true;
+    G.players.forEach(p=>{
+      if(p.age<=23){p.happiness=clamp((p.happiness??70)+6,0,100);p.confidence=clamp((p.confidence??70)+5,0,100);}
+      if(p.age>=30)p.happiness=clamp((p.happiness??70)-2,0,100);
+    });
+    G.coach.reputation=clamp((G.coach.reputation||45)+1,0,100);
+    generateNews({type:'press',text:'Clube aposta em jovens e sinaliza projeto de longo prazo'});
+  }else if(decision==='protectStars'){
+    G.coachDecisions.protectStars=true;
+    G.players.filter(p=>p.overall>=80).forEach(p=>{p.happiness=clamp((p.happiness??70)+5,0,100);p.wantsOut=false;});
+    G.coach.jobSecurity=clamp((G.coach.jobSecurity||70)-1,0,100);
+    generateNews({type:'transfer',text:'Treinador barra venda de estrelas e manda recado ao mercado'});
+  }else if(decision==='marketSale'){
+    G.coachDecisions.marketSale=true;
+    const star=[...G.players].sort((a,b)=>(b.transferValue||0)-(a.transferValue||0))[0];
+    if(star){star.wantsOut=true;makeOffer(star,pick(G.allClubs.filter(c=>c.name!==G.club.name))?.name||'Clube AI',Math.round((star.transferValue||star.value||1e6)*rnd(95,130)/100));}
+    generateNews({type:'transfer',text:'Diretoria admite vender jogador valorizado para equilibrar as contas'});
+  }else if(decision==='tacticalShift'){
+    G.coachDecisions.tacticalShift=true;
+    const styles=['Posse de bola','Contra-ataque','Ofensivo','Defensivo','Equilibrado'];
+    G.tactics.estilo=pick(styles);
+    G.tactics.mentalidade=G.tactics.estilo==='Ofensivo'?'Ofensivo':G.tactics.estilo==='Defensivo'?'Defensivo':'Equilibrado';
+    G.players.forEach(p=>{p.confidence=clamp((p.confidence??70)+rnd(-3,5),0,100);});
+    generateNews({type:'press',text:`Treinador muda plano de jogo e testa estilo ${G.tactics.estilo}`});
+  }
+  updateClubSatisfaction();
+  save();
+  nav(_curPage);
+}
+
+function evaluateClubObjectivePressure(){
+  if(!G.league?.started||!G.league.table?.length)return null;
+  const objectives=calculateClubObjectives();
+  G.club.objectives=objectives;
+  const pos=G.league.table.findIndex(t=>t.name===G.club.name)+1;
+  if(!pos)return null;
+  let delta=0;
+  if(objectives.primaryGoal==='Evitar rebaixamento'){
+    delta=pos>=17?-7:pos<=12?3:0;
+  }else if(objectives.primaryGoal==='Terminar no meio da tabela'){
+    delta=pos>=15?-5:pos<=8?4:pos<=12?1:-1;
+  }else if(objectives.primaryGoal==='Classificação continental'){
+    delta=pos<=6?4:pos>=12?-6:-1;
+  }else if(objectives.primaryGoal==='Ganhar liga'){
+    delta=pos===1?5:pos>4?-8:-2;
+  }
+  G.coach.jobSecurity=clamp((G.coach.jobSecurity||70)+delta,0,100);
+  G.coach.reputation=clamp((G.coach.reputation||45)+Math.round(delta/3),0,100);
+  if(delta<=-6)generateNews({type:'press',text:`Diretoria cobra meta: ${objectives.primaryGoal} parece distante`});
+  if(G.coach.jobSecurity<18)generateNews({type:'coach',text:'Risco de demissão cresce nos bastidores do clube'});
+  calculateManagerReputation();
+  return{position:pos,delta,jobSecurity:G.coach.jobSecurity};
+}
+
 function processGameEvent(matchResult={}){
   updatePlayerMorale(matchResult);
   updateClubEconomy(matchResult);
@@ -1924,7 +2054,9 @@ function processGameEvent(matchResult={}){
   const myPos=G.league?.started?G.league.table.findIndex(t=>t.name===G.club.name)+1:null;
   if(myPos)generateNews({type:'table',position:myPos});
   generateTransferRumors(G.players,G.allClubs);
+  simulateAIClubMarket(false);
   updateClubSatisfaction(matchResult.result||matchResult.myResult);
+  evaluateClubObjectivePressure();
   updateClubFinance();
   return{news:G.newsFeed,rumors:G.transferRumors,economy:G.club.economy};
 }
@@ -2252,7 +2384,7 @@ function simulateTVModeRound(excludeFixture=null){
 function save(){
   try{
     normalizeCareerSystems();
-    const data={...G,players:G.players.slice(0,MAX_MAIN_PLAYERS),baseYouth:G.baseYouth.slice(0,MAX_YOUTH_PLAYERS),market:G.market.slice(0,120),news:G.news.slice(0,60),newsFeed:(G.newsFeed||G.news||[]).slice(0,80),transferRumors:(G.transferRumors||[]).slice(0,30),transferInbox:G.transferInbox.slice(0,20),transferNegotiations:G.transferNegotiations.slice(0,20),contractNegotiations:G.contractNegotiations.slice(0,20),liveScores:G.liveScores.slice(0,8),liveMatches:G.liveMatches.slice(0,8),managerProfile:G.managerProfile};
+    const data={...G,players:G.players.slice(0,MAX_MAIN_PLAYERS),baseYouth:G.baseYouth.slice(0,MAX_YOUTH_PLAYERS),market:G.market.slice(0,120),news:G.news.slice(0,60),newsFeed:(G.newsFeed||G.news||[]).slice(0,80),transferRumors:(G.transferRumors||[]).slice(0,30),worldTransfers:(G.worldTransfers||[]).slice(0,40),transferInbox:G.transferInbox.slice(0,20),transferNegotiations:G.transferNegotiations.slice(0,20),contractNegotiations:G.contractNegotiations.slice(0,20),liveScores:G.liveScores.slice(0,8),liveMatches:G.liveMatches.slice(0,8),managerProfile:G.managerProfile,coachDecisions:G.coachDecisions};
     localStorage.setItem('fmpro_v5',JSON.stringify(data));
   }catch(e){}
 }
@@ -2376,6 +2508,31 @@ function renderTransferRumors(limit=6){
   </div>`).join('');
 }
 
+function renderWorldTransfers(limit=5){
+  const moves=(G.worldTransfers||[]).slice(0,limit);
+  if(!moves.length)return'<div class="small muted">Mercado global sem grandes movimentos agora.</div>';
+  return moves.map(m=>`<div class="small mb-1" style="border-bottom:1px solid var(--border);padding-bottom:6px">
+    <b>${m.to}</b> contratou ${m.player} (${m.overall} OVR)
+    <div class="very-small muted">${m.from} · ${fmtM(m.value)} · ${m.date||''}</div>
+  </div>`).join('');
+}
+
+function renderCoachDecisionPanel(){
+  const last=G.coachDecisions?.lastDecision;
+  const btn=(id,label,desc)=>`<button class="btn btn-ghost btn-sm" style="text-align:left;justify-content:flex-start" onclick="applyCoachDecision('${id}')"><b>${label}</b><span class="very-small muted" style="display:block">${desc}</span></button>`;
+  return`<div class="card mt-3">
+    <div class="card-hdr">Decisões do treinador</div>
+    <div class="gap-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px">
+      ${btn('rotation','Poupar jogadores','Reduz fadiga, mas pode mexer com confiança')}
+      ${btn('youthFocus','Apostar em jovens','Aumenta confiança dos jovens e cria narrativa de projeto')}
+      ${btn('protectStars','Manter estrelas','Acalma líderes, mas aumenta pressão financeira')}
+      ${btn('marketSale','Vender estrela','Gera proposta e alivia caixa, com risco esportivo')}
+      ${btn('tacticalShift','Mudar estilo','Altera mentalidade e pode gerar instabilidade')}
+    </div>
+    ${last?`<div class="very-small muted mt-2">Última decisão: <b>${last.decision}</b> em ${last.date}</div>`:''}
+  </div>`;
+}
+
 function renderTVMode(limit=5){
   const scores=(G.liveScores||[]).slice(0,limit);
   if(!scores.length)return'<div class="small muted">Sem jogos paralelos no momento.</div>';
@@ -2448,6 +2605,7 @@ function renderDashboard(){
     <div class="card-hdr">Noticias do Mundo</div>
     ${renderNewsFeed(6)}
   </div>
+  ${renderCoachDecisionPanel()}
   <div class="card mt-3">
     <div class="card-hdr">Rumores de Transferência</div>
     ${renderTransferRumors(5)}
@@ -2522,6 +2680,7 @@ function renderClub(){
     <div class="card-hdr">Rumores do mercado</div>
     ${renderTransferRumors(6)}
   </div>
+  ${renderCoachDecisionPanel()}
   <div class="card mb-3">
     <div class="card-hdr">Contratos do elenco</div>
     ${expiring.map(p=>{
@@ -3299,6 +3458,11 @@ function renderMarket(){
   <div class="card mb-2">
     <div class="card-hdr">Central de negociacao</div>
     ${renderNegotiationCenter(6)}
+  </div>
+  <div class="card mb-2">
+    <div class="card-hdr">Mercado global</div>
+    ${renderWorldTransfers(5)}
+    <button class="btn btn-ghost btn-sm mt-2" onclick="simulateAIClubMarket(true);save();nav('market')">Simular clubes AI</button>
   </div>
   <div class="filters">
     <select class="filter-select" onchange="_marketFilter.source=this.value;nav('market')">
