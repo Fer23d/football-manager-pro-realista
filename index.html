@@ -360,7 +360,7 @@ tr.my-club td:first-child{border-left:3px solid var(--green)}
       <div class="sb-section-label">Competições</div>
       <div class="sb-item" data-page="league" onclick="nav('league')"><span class="icon">🏆</span>Liga</div>
       <div class="sb-item" data-page="cup" onclick="nav('cup')"><span class="icon">🥇</span>Copa Nacional</div>
-      <div class="sb-item" data-page="continental" onclick="nav('continental')"><span class="icon">🌍</span>Continental</div>
+      <div class="sb-item" data-page="continental" onclick="nav('continental')"><span class="icon">🌎</span>Libertadores</div>
       <div class="sb-item" data-page="calendar" onclick="nav('calendar')"><span class="icon">📅</span>Calendário</div>
       <div class="sb-item" data-page="custom" onclick="nav('custom')"><span class="icon">🎯</span>Torneio Custom</div>
     </div>
@@ -502,7 +502,6 @@ const LEAGUES_DATA={
 };
 const CUP_DATA={
   'Copa do Brasil':{country:'🇧🇷',rounds:['Oitavas','Quartas','Semifinal','Final']},
-  'Champions League':{country:'🌍',rounds:['Oitavas','Quartas','Semifinal','Final']},
   'Libertadores':{country:'🌎',rounds:['Oitavas','Quartas','Semifinal','Final']},
 };
 const CLUB_COLORS=['#ef4444','#3b82f6','#22c55e','#f59e0b','#a855f7','#ec4899','#06b6d4','#f97316','#84cc16','#14b8a6','#8b5cf6','#e11d48','#0ea5e9','#65a30d'];
@@ -525,7 +524,7 @@ let G={
   allClubs:[],
   league:{name:'Brasileirão',table:[],fixtures:[],round:1,started:false,finished:false},
   cup:{name:'Copa do Brasil',rounds:[],currentRound:0,started:false,finished:false},
-  continental:{name:'Champions League',rounds:[],currentRound:0,started:false,finished:false},
+  continental:{name:'Libertadores',rounds:[],currentRound:0,started:false,finished:false},
   custom:{rounds:[],started:false,finished:false,teams:8},
   baseYouth:[],
   history:[],
@@ -705,6 +704,14 @@ function getClubMeta(clubName){
   return{name:clubName,country:null,continent:null,league:null};
 }
 
+function validateLibertadoresTeams(team){
+  const meta=typeof team==='string'?getClubMeta(team):(team||{});
+  if(meta.continent!=='South America'){
+    return false;
+  }
+  return true;
+}
+
 function validateLeagueTeams(league,team){
   const meta=typeof team==='string'?getClubMeta(team):team;
   if(league==='Copa do Brasil'||league==='Brasileirão')return meta.country==='Brazil'||meta.countryCode==='Brazil';
@@ -715,8 +722,7 @@ function validateLeagueTeams(league,team){
   if(league==='Ligue 1')return meta.country==='France'||meta.countryCode==='France';
   if(league==='MLS')return meta.country==='USA'||meta.countryCode==='USA';
   if(league==='Liga MX')return meta.country==='Mexico'||meta.countryCode==='Mexico';
-  if(league==='Champions League')return meta.continent==='Europe';
-  if(league==='Libertadores')return meta.continent==='South America';
+  if(league==='Libertadores'||league==='Champions League')return validateLibertadoresTeams(meta);
   return true;
 }
 
@@ -1341,9 +1347,16 @@ function initCup(cupName,pool){
 }
 
 function initCupFull(cupName){
+  if(cupName==='Champions League')cupName='Libertadores';
   const ldata=Object.values(LEAGUES_DATA);
   let pool=[G.club.name];
-  ldata.forEach(l=>pool.push(...l.clubs.slice(0,3)));
+  if(cupName==='Libertadores'){
+    const slots=G.league?.name==='Brasileirão'?assignLibertadoresSlots(G.league.table||[],getCupWinner(G.cup)):(G.qualifiedLibertadores||[]);
+    pool=slots.map(s=>s.club);
+    if(validateLibertadoresTeams(G.club.name)&&!pool.includes(G.club.name))pool.push(G.club.name);
+  }else{
+    ldata.forEach(l=>pool.push(...l.clubs.slice(0,3)));
+  }
   pool=pool.filter(c=>c==='BYE'||validateLeagueTeams(cupName,c));
   if(!validateLeagueTeams(cupName,G.club.name))pool=pool.filter(c=>c!==G.club.name);
   pool=[...new Set(pool)].slice(0,16);
@@ -1523,6 +1536,9 @@ function normalizeCareerSystems(){
   G.user.loginStreak=G.user.loginStreak||0;
   G.club.finance=G.club.finance||{balance:G.club.budget||0,revenue:0,expenses:0,salaries:0};
   G.club.satisfaction=G.club.satisfaction||{fans:70,board:72};
+  if(!G.continental||G.continental.name==='Champions League'){
+    G.continental={name:'Libertadores',rounds:[],currentRound:0,started:false,finished:false};
+  }
   if(G.league?.fixtures?.length)assignFixtureRounds(G.league.fixtures,G.league.table?.length||20,G.league.name);
   G.club.objectives=G.club.objectives||calculateClubObjectives();
   G.qualifiedLibertadores=G.qualifiedLibertadores||[];
@@ -2154,7 +2170,7 @@ function renderPage(page){
     case'base':return renderBase();
     case'league':return renderLeague();
     case'cup':return renderCupPage(G.cup,'Copa do Brasil');
-    case'continental':return renderCupPage(G.continental,'Champions League');
+    case'continental':return renderCupPage(G.continental,'Libertadores');
     case'calendar':return renderCalendar();
     case'custom':return renderCustom();
     case'market':return renderMarket();
