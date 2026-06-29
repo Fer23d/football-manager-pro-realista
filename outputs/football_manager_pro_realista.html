@@ -591,6 +591,7 @@ let G={
   newsFeed:[],
   transferRumors:[],
   worldTransfers:[],
+  aiTransferOffers:[],
   transferInbox:[],
   transferNegotiations:[],
   contractNegotiations:[],
@@ -746,20 +747,97 @@ function generateAIClubs(){
     for(const cname of ldata.clubs){
       const strength=leagueStrength[lname]||76;
       const overall=clamp(rnd(strength-22,strength+2),52,94);
+      const budget=rnd(5,80)*1e6;
       clubs.push({
         name:cname,league:lname,country:ldata.country,
         countryCode:ldata.countryCode,continent:ldata.continent,
         color:pick(CLUB_COLORS),badge:pick(BADGE_EMOJIS),
         overall,style:pick(TEAM_STYLES),form:[],
-        budget:rnd(5,80)*1e6,
+        budget,
         squadSize:rnd(23,MAX_SQUAD_SIZE),
         players:[],
+        ai:createClubAIProfile({overall,budget,league:lname}),
         stats:{w:0,d:0,l:0,gf:0,ga:0,pts:0,played:0,form:[]},
       });
     }
   }
   G.allClubs=clubs;
   return clubs;
+}
+
+function createClubAIProfile(club={}){
+  const budget=club.budget||40e6;
+  const overall=club.overall||70;
+  const rich=budget>=55e6||overall>=82;
+  const weak=budget<18e6||overall<66;
+  return{
+    aggressionLevel:rich?rnd(68,92):weak?rnd(25,55):rnd(45,72),
+    budgetPriority:weak?'save':rich?'spend':'balanced',
+    squadNeeds:[],
+    transferStrategy:rich?'stars':weak?'value':'prospects',
+    lastMarketDay:0
+  };
+}
+
+function normalizeClubAI(club){
+  if(!club)return club;
+  club.ai=club.ai||createClubAIProfile(club);
+  club.ai.aggressionLevel=club.ai.aggressionLevel??rnd(40,80);
+  club.ai.budgetPriority=club.ai.budgetPriority||((club.budget||0)>55e6?'spend':(club.budget||0)<18e6?'save':'balanced');
+  club.ai.transferStrategy=club.ai.transferStrategy||((club.overall||70)>=82?'stars':(club.overall||70)<66?'value':'prospects');
+  club.ai.squadNeeds=club.ai.squadNeeds||[];
+  club.players=club.players||[];
+  return club;
+}
+
+function getAISquadNeed(club){
+  normalizeClubAI(club);
+  const groups={GOL:0,DEF:0,MID:0,ATK:0};
+  (club.players||[]).forEach(p=>{
+    const pos=p.position;
+    if(pos==='GOL')groups.GOL++;
+    else if(['ZAG','LE','LD'].includes(pos))groups.DEF++;
+    else if(['VOL','MC','MEI'].includes(pos))groups.MID++;
+    else groups.ATK++;
+  });
+  const needs=[];
+  if(groups.GOL<1)needs.push('GOL');
+  if(groups.DEF<4)needs.push('DEF');
+  if(groups.MID<4)needs.push('MID');
+  if(groups.ATK<3)needs.push('ATK');
+  if(!needs.length)needs.push(pick(['DEF','MID','ATK']));
+  club.ai.squadNeeds=needs;
+  return needs;
+}
+
+function positionGroup(pos){
+  if(pos==='GOL')return'GOL';
+  if(['ZAG','LE','LD'].includes(pos))return'DEF';
+  if(['VOL','MC','MEI'].includes(pos))return'MID';
+  return'ATK';
+}
+
+function ensureAIClubSquads(){
+  const activeNames=new Set([
+    ...(G.league?.table||[]).map(t=>t.name),
+    ...(G.cup?.pool||[]),
+    ...(G.continental?.pool||[]),
+    ...(G.allClubs||[]).sort((a,b)=>(b.budget||0)-(a.budget||0)).slice(0,32).map(c=>c.name)
+  ].filter(Boolean));
+  (G.allClubs||[]).filter(c=>activeNames.has(c.name)).forEach(club=>{
+    normalizeClubAI(club);
+    if((club.players||[]).length>=8)return;
+    const strength=club.overall||70;
+    const template=['GOL','ZAG','ZAG','LE','LD','VOL','MC','MEI','PE','PD','ATA','ATA'];
+    club.players=club.players||[];
+    template.slice(0,12).forEach(pos=>{
+      if(club.players.length>=12)return;
+      const p=normalizeMarketPlayer(createPlayer({position:pos,overall:clamp(strength+rnd(-10,7),48,93),age:rnd(18,34),club:club.name,contractClub:club.name,contractStatus:'active',league:club.league}));
+      p.aiOwned=true;
+      p.club=club.name;
+      club.players.push(p);
+    });
+  });
 }
 
 function getClubMeta(clubName){
@@ -1907,7 +1985,7 @@ function processNextWeek(){
     addNews(`Semana ${week} processada: ${results.length} jogo(s) simulados no calendario unificado`,'season');
   }
   processTransferOffersAllPlayers();
-  simulateAIClubMarket(false);
+  processTransferMarket();
   save();
   nav(_curPage);
   return results;
@@ -1926,7 +2004,7 @@ function simulateMatchesByDate(dateISO){
     if(res)results.push({entry,result:res});
   });
   updateAllTables();
-  if(entries.length)simulateAIClubMarket(false);
+  if(entries.length)processTransferMarket();
   addNews(`${entries.length} jogo(s) processado(s) em ${dateISO}`,'season');
   save();
   return results;
@@ -2160,6 +2238,7 @@ function normalizeCareerSystems(){
   G.newsFeed=G.newsFeed||G.news||[];
   G.transferRumors=G.transferRumors||[];
   G.worldTransfers=G.worldTransfers||[];
+  G.aiTransferOffers=G.aiTransferOffers||[];
   G.transferInbox=G.transferInbox||[];
   G.transferNegotiations=G.transferNegotiations||[];
   G.contractNegotiations=G.contractNegotiations||[];
@@ -2212,6 +2291,7 @@ function normalizeCareerSystems(){
   G.players=(G.players||[]).map(normalizeMarketPlayer);
   G.market=(G.market||[]).map(normalizeMarketPlayer);
   G.baseYouth=(G.baseYouth||[]).map(normalizeMarketPlayer).slice(0,MAX_YOUTH_PLAYERS);
+  G.allClubs=(G.allClubs||[]).map(normalizeClubAI);
   enforceSquadLimits();
   updateClubFinance();
 }
@@ -2567,27 +2647,155 @@ function generateTransferRumors(players=G.players,clubs=G.allClubs){
 }
 
 function simulateAIClubMarket(force=false){
-  normalizeCareerSystems();
-  const clubs=(G.allClubs||[]).filter(c=>c.name!==G.club.name);
-  if(!clubs.length)return[];
-  const moves=[];
-  const attempts=force?rnd(2,5):rnd(0,2);
-  for(let i=0;i<attempts;i++){
-    if(Math.random()>(force ? .75 : .28))continue;
-    const buyer=pick(clubs);
-    const seller=pick(clubs.filter(c=>c.name!==buyer.name));
-    if(!buyer||!seller)continue;
-    const overall=clamp(Math.round(((buyer.overall||70)+(seller.overall||70))/2)+rnd(-10,8),55,91);
-    const p=createPlayer({overall,club:seller.name,contractClub:seller.name,contractStatus:'active',league:seller.league});
-    const value=calculateTransferValue(p);
-    buyer.budget=Math.max(0,(buyer.budget||40e6)-value);
-    seller.budget=(seller.budget||30e6)+value;
-    const move={id:Date.now()+rnd(1,9999),season:G.season,player:p.name,overall:p.overall,from:seller.name,to:buyer.name,value,date:new Date().toLocaleDateString('pt-BR')};
-    moves.push(move);
-    G.worldTransfers=[move,...(G.worldTransfers||[])].slice(0,40);
-    generateNews({type:'transfer',text:`${buyer.name} fecha com ${p.name} vindo do ${seller.name} por ${fmtM(value)}`});
+  return processTransferMarket({force});
+}
+
+function updatePlayerValue(player){
+  if(!player)return 0;
+  const oldValue=player.marketValue||player.value||player.valorMercado||calculateMarketValue(player);
+  const dynamic=calculateMarketValue(player);
+  const interest=(G.transferRumors||[]).filter(r=>r.playerId===player.id&&r.status==='monitoring').length;
+  const moraleBoost=((player.morale??player.moral??70)-70)/100;
+  const pressure=player.wantsOut?.valueOf?.()||player.wantsOut ? .88 : 1;
+  const adjusted=Math.round(dynamic*(1+interest*.035+moraleBoost*.08)*pressure);
+  player.marketValue=clamp(adjusted,Math.round(oldValue*.72),Math.round(oldValue*1.35));
+  player.value=player.marketValue;
+  player.playerValue=player.marketValue;
+  player.valorMercado=player.marketValue;
+  player.transferValue=calculateTransferValue(player);
+  return player.marketValue;
+}
+
+function evaluateTransferOffer(player,offer){
+  const market=player.transferValue||calculateTransferValue(player);
+  offer.marketValue=market;
+  if(offer.value>=market)return{decision:'accept',value:offer.value};
+  if(offer.value>=market*.85){
+    offer.counterOffer=Math.round(market*rnd(102,116)/100);
+    return{decision:'counter',value:offer.counterOffer};
   }
+  return{decision:'reject',value:offer.value};
+}
+
+function chooseAITransferTarget(buyer,sellers){
+  const needs=getAISquadNeed(buyer);
+  const candidates=[];
+  sellers.forEach(seller=>{
+    (seller.players||[]).forEach(p=>{
+      if(!p||p.club!==seller.name)return;
+      const fits=needs.includes(positionGroup(p.position));
+      const strategy=buyer.ai.transferStrategy;
+      const strategyFit=strategy==='stars'?p.overall>=78:strategy==='prospects'?p.age<=24&&p.potential>=p.overall+6:p.transferValue<=(buyer.budget||0)*.22;
+      const sellerWeak=(seller.ai?.budgetPriority==='save'||(seller.budget||0)<12e6);
+      const score=(fits?28:0)+(strategyFit?24:0)+(p.overall||60)+(p.potential||p.overall||60)/4+(sellerWeak?10:0)-Math.max(0,(p.age||25)-29)*2;
+      if(score>82)candidates.push({player:p,seller,score});
+    });
+  });
+  candidates.sort((a,b)=>b.score-a.score);
+  return candidates.slice(0,8)[rnd(0,Math.max(0,Math.min(7,candidates.length-1)))]||candidates[0]||null;
+}
+
+function generateAITransfers(clubs=G.allClubs,players=[],options={}){
+  normalizeCareerSystems();
+  ensureAIClubSquads();
+  const pool=(clubs||[]).filter(c=>c.name!==G.club.name&&c.budget>1e6).map(normalizeClubAI);
+  const offers=[];
+  const attempts=options.force?clamp(Math.ceil(pool.length/18),5,12):clamp(Math.ceil(pool.length/28),2,7);
+  for(let i=0;i<attempts;i++){
+    const buyer=pick(pool);
+    if(!buyer)continue;
+    const chance=(buyer.ai.aggressionLevel||50)/100;
+    if(!options.force&&Math.random()>chance*.45)continue;
+    const sellers=pool.filter(c=>c.name!==buyer.name&&c.players?.length);
+    const target=chooseAITransferTarget(buyer,sellers);
+    if(!target)continue;
+    const p=target.player,seller=target.seller;
+    updatePlayerValue(p);
+    const maxSpend=(buyer.budget||0)*(buyer.ai.budgetPriority==='spend' ? .42 : .28);
+    if((p.transferValue||0)>maxSpend&&buyer.ai.transferStrategy!=='stars'&&!options.force)continue;
+    const multiplier=buyer.ai.transferStrategy==='stars'?rnd(96,125)/100:buyer.ai.transferStrategy==='prospects'?rnd(84,112)/100:rnd(76,102)/100;
+    const value=Math.round((p.transferValue||calculateTransferValue(p))*multiplier);
+    if(value>(buyer.budget||0)*.9&&!options.force)continue;
+    const offer={id:Date.now()+rnd(100,9999),type:'ai',status:'pending',playerId:p.id,playerName:p.name,buyingClub:buyer.name,sellingClub:seller.name,value,createdDay:season?.currentDay||1,round:1};
+    const exists=(G.aiTransferOffers||[]).some(o=>o.status==='pending'&&o.playerId===p.id&&o.buyingClub===buyer.name);
+    if(exists)continue;
+    G.aiTransferOffers=[offer,...(G.aiTransferOffers||[])].slice(0,50);
+    offers.push(offer);
+    if(Math.random()<.45){
+      G.transferRumors=[{id:Date.now()+rnd(10,9999),season:G.season,playerId:p.id,playerName:p.name,club:buyer.name,league:buyer.league,confidence:rnd(35,82),date:new Date().toLocaleDateString('pt-BR'),status:'monitoring'},...(G.transferRumors||[])].slice(0,30);
+      generateNews({type:'rumor',text:`${buyer.name} prepara investida por ${p.name}, do ${seller.name}`});
+    }
+  }
+  if(options.force&&!offers.length){
+    const buyer=pool.sort((a,b)=>(b.budget||0)-(a.budget||0))[0];
+    const sellers=pool.filter(c=>c.name!==buyer?.name&&c.players?.length);
+    const target=buyer?chooseAITransferTarget(buyer,sellers):null;
+    if(target){
+      const p=target.player,seller=target.seller;
+      updatePlayerValue(p);
+      const value=Math.min(Math.round((p.transferValue||calculateTransferValue(p))*rnd(86,108)/100),Math.round((buyer.budget||1e6)*.75));
+      const offer={id:Date.now()+rnd(100,9999),type:'ai',status:'pending',playerId:p.id,playerName:p.name,buyingClub:buyer.name,sellingClub:seller.name,value,createdDay:season?.currentDay||1,round:1};
+      G.aiTransferOffers=[offer,...(G.aiTransferOffers||[])].slice(0,50);
+      offers.push(offer);
+    }
+  }
+  return offers;
+}
+
+function completeAITransfer(offer,player,buyer,seller,value){
+  offer.status='accepted';
+  offer.value=value;
+  buyer.budget=Math.max(0,(buyer.budget||0)-value);
+  seller.budget=(seller.budget||0)+value;
+  seller.players=(seller.players||[]).filter(p=>p.id!==player.id);
+  player.club=buyer.name;
+  player.contract={...(player.contract||{}),club:buyer.name,status:'active',years:rnd(2,5),remainingMonths:rnd(18,60)};
+  buyer.players=[player,...(buyer.players||[])].slice(0,18);
+  const move={id:Date.now()+rnd(1,9999),season:G.season,player:player.name,overall:player.overall,from:seller.name,to:buyer.name,value,date:new Date().toLocaleDateString('pt-BR'),source:'AI'};
+  G.worldTransfers=[move,...(G.worldTransfers||[])].slice(0,50);
+  generateNews({type:'transfer',text:`${buyer.name} contrata ${player.name} do ${seller.name} por ${fmtM(value)}`});
+  return move;
+}
+
+function processPendingOffers(){
+  normalizeCareerSystems();
+  ensureAIClubSquads();
+  const moves=[];
+  (G.aiTransferOffers||[]).filter(o=>o.status==='pending'||o.status==='counter').forEach(offer=>{
+    const buyer=(G.allClubs||[]).find(c=>c.name===offer.buyingClub);
+    const seller=(G.allClubs||[]).find(c=>c.name===offer.sellingClub);
+    const player=(seller?.players||[]).find(p=>p.id===offer.playerId);
+    if(!buyer||!seller||!player){offer.status='expired';return;}
+    const result=evaluateTransferOffer(player,offer);
+    if(result.decision==='accept'){
+      moves.push(completeAITransfer(offer,player,buyer,seller,offer.value));
+    }else if(result.decision==='counter'){
+      const canStretch=(buyer.budget||0)>=result.value&&(buyer.ai.aggressionLevel||50)+rnd(-15,20)>62;
+      if(canStretch) moves.push(completeAITransfer(offer,player,buyer,seller,result.value));
+      else{offer.status='counter';offer.value=Math.max(offer.value,Math.round(result.value*.94));offer.counterOffer=result.value;offer.round=(offer.round||1)+1;if(offer.round>2)offer.status='rejected';}
+    }else{
+      offer.status='rejected';
+    }
+  });
+  G.aiTransferOffers=(G.aiTransferOffers||[]).slice(0,50);
   return moves;
+}
+
+function processTransferMarket(options={}){
+  normalizeCareerSystems();
+  ensureAIClubSquads();
+  [...(G.players||[]),...(G.market||[])].forEach(updatePlayerValue);
+  (G.allClubs||[]).forEach(c=>(c.players||[]).forEach(updatePlayerValue));
+  const offers=generateAITransfers(G.allClubs,[],options);
+  const moves=processPendingOffers();
+  if(options.force&&!offers.length&&!moves.length){
+    const forced=generateAITransfers(G.allClubs,[],{force:true});
+    offers.push(...forced);
+    moves.push(...processPendingOffers());
+  }
+  generateTransferRumors(G.players,G.allClubs);
+  save();
+  return{offers,moves,pending:(G.aiTransferOffers||[]).filter(o=>o.status==='pending'||o.status==='counter').length};
 }
 
 function applyCoachDecision(decision){
@@ -2661,7 +2869,7 @@ function processGameEvent(matchResult={}){
   const myPos=G.league?.started?G.league.table.findIndex(t=>t.name===G.club.name)+1:null;
   if(myPos)generateNews({type:'table',position:myPos});
   generateTransferRumors(G.players,G.allClubs);
-  simulateAIClubMarket(false);
+  processTransferMarket();
   updateClubSatisfaction(matchResult.result||matchResult.myResult);
   evaluateClubObjectivePressure();
   updateClubFinance();
@@ -3121,6 +3329,15 @@ function renderWorldTransfers(limit=5){
   return moves.map(m=>`<div class="small mb-1" style="border-bottom:1px solid var(--border);padding-bottom:6px">
     <b>${m.to}</b> contratou ${m.player} (${m.overall} OVR)
     <div class="very-small muted">${m.from} · ${fmtM(m.value)} · ${m.date||''}</div>
+  </div>`).join('');
+}
+
+function renderAIMarketPulse(limit=5){
+  const pending=(G.aiTransferOffers||[]).filter(o=>['pending','counter'].includes(o.status)).slice(0,limit);
+  if(!pending.length)return'<div class="small muted">Clubes monitorando o mercado, sem ofertas abertas agora.</div>';
+  return pending.map(o=>`<div class="small mb-1" style="border-bottom:1px solid var(--border);padding-bottom:6px">
+    <b>${o.buyingClub}</b> negocia ${o.playerName}
+    <div class="very-small muted">${o.sellingClub} · oferta ${fmtM(o.value)} ${o.counterOffer?`· pedida ${fmtM(o.counterOffer)}`:''} · ${o.status}</div>
   </div>`).join('');
 }
 
@@ -4094,8 +4311,10 @@ function renderMarket(){
   </div>
   <div class="card mb-2">
     <div class="card-hdr">Mercado global</div>
+    ${renderAIMarketPulse(5)}
+    <div class="mt-2"></div>
     ${renderWorldTransfers(5)}
-    <button class="btn btn-ghost btn-sm mt-2" onclick="simulateAIClubMarket(true);save();nav('market')">Simular clubes AI</button>
+    <button class="btn btn-ghost btn-sm mt-2" onclick="processTransferMarket({force:true});nav('market')">Processar mercado vivo</button>
   </div>
   <div class="filters">
     <select class="filter-select" onchange="_marketFilter.source=this.value;nav('market')">
