@@ -170,6 +170,34 @@ tr.my-club td:first-child{border-left:3px solid var(--green)}
 .form-d{background:var(--accent2);color:#000}
 .form-l{background:var(--red2);color:#fff}
 
+/* VISUAL CALENDAR */
+.calendar-shell{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.calendar-weekdays{display:grid;grid-template-columns:repeat(7,1fr);background:var(--bg3);border-bottom:1px solid var(--border)}
+.calendar-weekday{padding:9px 8px;font-size:.65rem;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);font-weight:700;text-align:center}
+.calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));auto-rows:minmax(116px,auto)}
+.calendar-day{border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:7px;min-height:116px;cursor:pointer;background:var(--bg2);transition:.15s;display:flex;flex-direction:column;gap:5px}
+.calendar-day:nth-child(7n){border-right:none}
+.calendar-day:hover{background:var(--bg3);box-shadow:inset 0 0 0 1px var(--border2)}
+.calendar-day.empty{background:rgba(15,23,42,.35);cursor:default}
+.calendar-day.today{box-shadow:inset 0 0 0 2px var(--green)}
+.calendar-day.has-me{background:rgba(34,197,94,.055)}
+.calendar-day-head{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.calendar-day-num{font-size:.85rem;font-weight:800}
+.calendar-day-date{font-size:.56rem;color:var(--text3)}
+.calendar-events{display:flex;flex-direction:column;gap:3px;overflow:hidden}
+.cal-event{border-left:3px solid var(--border2);border-radius:5px;padding:3px 5px;background:var(--bg3);font-size:.62rem;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal-event.me{font-weight:800}
+.cal-event.played{opacity:.65;text-decoration:line-through}
+.cal-br{border-left-color:var(--green);background:rgba(34,197,94,.1)}
+.cal-cd{border-left-color:var(--accent);background:rgba(245,158,11,.12)}
+.cal-lib{border-left-color:var(--blue);background:rgba(59,130,246,.12)}
+.cal-other{border-left-color:var(--purple);background:rgba(168,85,247,.1)}
+.cal-tag{font-size:.52rem;font-weight:900;margin-right:4px}
+.calendar-more{font-size:.58rem;color:var(--text3);padding-left:2px}
+.day-match{padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg3);margin-bottom:8px}
+.day-match.played{opacity:.72}
+.day-match-score{font-weight:900;color:var(--green)}
+
 /* MATCH SCREEN */
 .match-screen{background:var(--bg);min-height:400px;border-radius:var(--r);overflow:hidden}
 .match-header{background:linear-gradient(135deg,var(--bg2),var(--bg3));padding:20px;text-align:center}
@@ -424,6 +452,12 @@ tr.my-club td:first-child{border-left:3px solid var(--green)}
   <div class="modal" id="modalCustom">
     <div class="modal-hdr"><span class="modal-title">🎯 Criar Torneio</span><button class="modal-x" onclick="closeModal('overlayCustom')">✕</button></div>
     <div class="modal-body" id="customBody"></div>
+  </div>
+</div>
+<div class="overlay hidden" id="overlayCalendarDay">
+  <div class="modal" id="modalCalendarDay">
+    <div class="modal-hdr"><span class="modal-title" id="calDayTitle">Dia</span><button class="modal-x" onclick="closeModal('overlayCalendarDay')">✕</button></div>
+    <div class="modal-body" id="calDayBody"></div>
   </div>
 </div>
 <div class="toast" id="toastEl"></div>
@@ -1327,6 +1361,20 @@ function calendarDateForDay(day){
   return new Date(seasonYear,6,Math.max(1,day)).toLocaleDateString('pt-BR');
 }
 
+function calendarISOForDay(day){
+  const seasonYear=new Date().getFullYear()+Math.max(0,(G.season||1)-1);
+  const d=new Date(seasonYear,6,Math.max(1,day));
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function parsePtDateToISO(date){
+  if(!date)return null;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(date))return date;
+  const parts=String(date).split('/');
+  if(parts.length===3)return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+  return null;
+}
+
 function upsertCalendarEntry(entries,entry){
   const existing=(G.seasonEngine?.calendar||[]).find(e=>e.id===entry.id);
   entries.push({...existing,...entry});
@@ -1339,7 +1387,7 @@ function rebuildSeasonCalendar(){
     const week=f.week||f.round||1;
     const day=f.day||((week-1)*7+pick([1,4,6]));
     f.week=week;f.day=day;f.competition=G.league.name;f.date=f.date||calendarDateForDay(day);
-    upsertCalendarEntry(entries,{id:`league-${f.id}`,week,day,competition:G.league.name,type:'league',fixtureId:f.id,homeTeam:f.home,awayTeam:f.away,status:f.played?'played':'scheduled',homeGoals:f.hG,awayGoals:f.aG,date:f.date});
+    upsertCalendarEntry(entries,{id:`league-${f.id}`,week,day,dateISO:calendarISOForDay(day),competition:G.league.name,type:'league',fixtureId:f.id,homeTeam:f.home,awayTeam:f.away,status:f.played?'played':'scheduled',homeGoals:f.hG,awayGoals:f.aG,date:f.date});
   });
   addCupToSeasonCalendar(entries,G.cup,4,'cup');
   addCupToSeasonCalendar(entries,G.continental,6,'continental');
@@ -1348,7 +1396,7 @@ function rebuildSeasonCalendar(){
       const week=f.week||f.round||1;
       const day=f.day||((week-1)*7+3);
       f.week=week;f.day=day;f.date=f.date||calendarDateForDay(day);
-      upsertCalendarEntry(entries,{id:`custom-${i}`,week,day,competition:'Torneio Custom',type:'custom',fixtureIndex:i,homeTeam:f.home,awayTeam:f.away,status:f.played?'played':'scheduled',homeGoals:f.hG,awayGoals:f.aG,date:f.date});
+      upsertCalendarEntry(entries,{id:`custom-${i}`,week,day,dateISO:calendarISOForDay(day),competition:'Torneio Custom',type:'custom',fixtureIndex:i,homeTeam:f.home,awayTeam:f.away,status:f.played?'played':'scheduled',homeGoals:f.hG,awayGoals:f.aG,date:f.date});
     });
   }
   G.seasonEngine.competitions=[
@@ -1368,7 +1416,7 @@ function addCupToSeasonCalendar(entries,cupState,startWeek,type){
     const day=(week-1)*7+(type==='cup'?3:5);
     (round.matches||[]).forEach((m,mi)=>{
       m.week=m.week||week;m.day=m.day||day;m.date=m.date||calendarDateForDay(m.day);m.competition=cupState.name;
-      upsertCalendarEntry(entries,{id:`${type}-${ri}-${mi}`,week,day:m.day,competition:cupState.name,type,roundIndex:ri,matchIndex:mi,homeTeam:m.home,awayTeam:m.away,status:m.played?'played':'scheduled',homeGoals:m.hG,awayGoals:m.aG,date:m.date,roundName:round.name});
+      upsertCalendarEntry(entries,{id:`${type}-${ri}-${mi}`,week,day:m.day,dateISO:calendarISOForDay(m.day),competition:cupState.name,type,roundIndex:ri,matchIndex:mi,homeTeam:m.home,awayTeam:m.away,status:m.played?'played':'scheduled',homeGoals:m.hG,awayGoals:m.aG,date:m.date,roundName:round.name});
     });
   });
 }
@@ -1708,6 +1756,48 @@ function processNextWeek(){
   save();
   nav(_curPage);
   return results;
+}
+
+function getMatchesByDate(dateISO){
+  ensureSeasonEngine();
+  return (G.seasonEngine.calendar||[]).filter(e=>(e.dateISO||parsePtDateToISO(e.date))===dateISO);
+}
+
+function simulateMatchesByDate(dateISO){
+  const entries=getMatchesByDate(dateISO).filter(e=>e.status!=='played');
+  const results=[];
+  entries.sort((a,b)=>a.competition.localeCompare(b.competition)).forEach(entry=>{
+    const res=simulateCalendarEntry(entry);
+    if(res)results.push({entry,result:res});
+  });
+  updateAllTables();
+  if(entries.length)simulateAIClubMarket(false);
+  addNews(`${entries.length} jogo(s) processado(s) em ${dateISO}`,'season');
+  save();
+  return results;
+}
+
+function advanceDay(){
+  if(!G.league?.started&&!G.cup?.started&&!G.continental?.started)startUnifiedSeason();
+  ensureSeasonEngine();
+  const day=G.seasonEngine.currentDay||1;
+  const dateISO=calendarISOForDay(day);
+  recoverSquadDays(1,'between');
+  const results=simulateMatchesByDate(dateISO);
+  G.seasonEngine.currentDay=day+1;
+  G.seasonEngine.currentWeek=Math.max(1,Math.ceil(G.seasonEngine.currentDay/7));
+  G.seasonEngine.nextAction='training';
+  updateAllTables();
+  toast(results.length?`Dia avançado: ${results.length} jogo(s)`:'Dia avançado sem jogos');
+  nav(_curPage);
+  return results;
+}
+
+function competitionTag(competition){
+  if(competition==='Brasileirão')return{tag:'BR',cls:'cal-br',color:'var(--green)'};
+  if(competition==='Copa do Brasil')return{tag:'CD',cls:'cal-cd',color:'var(--accent)'};
+  if(competition==='Libertadores')return{tag:'LIB',cls:'cal-lib',color:'var(--blue)'};
+  return{tag:'OUT',cls:'cal-other',color:'var(--purple)'};
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -4148,6 +4238,7 @@ function renderHistory(){
 
 // ── CALENDAR ───────────────────────────────────────────────
 let _calendarFilter='all';
+let _calendarMonthOffset=0;
 
 function normalizeCalendarMatch(match,competition,roundLabel,roundNum,dateFallback){
   const played=!!match.played;
@@ -4168,10 +4259,13 @@ function normalizeCalendarMatch(match,competition,roundLabel,roundNum,dateFallba
 function getSeasonCalendarMatches(){
   ensureSeasonEngine();
   return (G.seasonEngine.calendar||[]).map(e=>({
+    id:e.id,
     competition:e.competition,
+    type:e.type,
     round:e.week,
     roundLabel:`Semana ${e.week}`,
     date:e.date||calendarDateForDay(e.day||((e.week-1)*7+1)),
+    dateISO:e.dateISO||calendarISOForDay(e.day||((e.week-1)*7+1)),
     day:e.day||((e.week-1)*7+1),
     home:e.homeTeam,
     away:e.awayTeam,
@@ -4182,19 +4276,44 @@ function getSeasonCalendarMatches(){
   })).sort((a,b)=>a.round-b.round||a.competition.localeCompare(b.competition)||a.home.localeCompare(b.home));
 }
 
+function getCalendarDays(){
+  const matches=getSeasonCalendarMatches();
+  const byDate={};
+  matches.forEach(m=>{
+    byDate[m.dateISO]=byDate[m.dateISO]||{date:m.dateISO,display:m.date,day:m.day,matches:[]};
+    byDate[m.dateISO].matches.push({homeTeam:m.home,awayTeam:m.away,competition:m.competition,status:m.played?'played':'scheduled',score:m.score,id:m.id,type:m.type,myClub:m.myClub});
+  });
+  return Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date));
+}
+
+function getCalendarMonthBase(){
+  const currentDay=G.seasonEngine?.currentDay||1;
+  const base=new Date(calendarISOForDay(currentDay)+'T00:00:00');
+  return new Date(base.getFullYear(),base.getMonth()+_calendarMonthOffset,1);
+}
+
 function renderCalendar(){
+  ensureSeasonEngine();
   const matches=getSeasonCalendarMatches();
   const competitions=['all',...new Set(matches.map(m=>m.competition))];
-  const filtered=_calendarFilter==='all'?matches:matches.filter(m=>m.competition===_calendarFilter);
-  const grouped={};
-  filtered.forEach(m=>{
-    const key=`${m.competition} - ${m.roundLabel}`;
-    grouped[key]=grouped[key]||[];
-    grouped[key].push(m);
-  });
+  const monthBase=getCalendarMonthBase();
+  const year=monthBase.getFullYear(),month=monthBase.getMonth();
+  const monthName=monthBase.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+  const firstDow=(monthBase.getDay()+6)%7;
+  const daysInMonth=new Date(year,month+1,0).getDate();
+  const currentISO=calendarISOForDay(G.seasonEngine?.currentDay||1);
+  const cells=[];
+  for(let i=0;i<firstDow;i++)cells.push({empty:true});
+  for(let d=1;d<=daysInMonth;d++){
+    const iso=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dayMatches=matches.filter(m=>m.dateISO===iso&&(_calendarFilter==='all'||m.competition===_calendarFilter));
+    cells.push({day:d,iso,matches:dayMatches});
+  }
+  while(cells.length%7)cells.push({empty:true});
   return`<div class="page-hdr">
     <div><div class="page-title">📅 Calendário</div><div class="page-sub">Temporada ${G.season} - Semana ${G.seasonEngine?.currentWeek||1} · Dia ${G.seasonEngine?.currentDay||1}</div></div>
     <div class="flex-row">
+      <button class="btn btn-green btn-sm" onclick="advanceDay()">▶ Avançar Dia</button>
       <button class="btn btn-green btn-sm" onclick="processNextWeek()">▶ Avançar Semana</button>
       <button class="btn btn-blue btn-sm" onclick="applyTraining('rest')">Descansar</button>
       <button class="btn btn-ghost btn-sm" onclick="startUnifiedSeason();nav('calendar')">Iniciar temporada</button>
@@ -4203,16 +4322,74 @@ function renderCalendar(){
       </select>
     </div>
   </div>
-  ${filtered.length===0?'<div class="card"><div class="small muted">Nenhum jogo criado ainda. Inicie uma liga, copa ou torneio custom.</div></div>':
-  Object.entries(grouped).map(([group,items])=>`<div class="card mb-2">
-    <div class="card-hdr">${group}</div>
-    ${items.map(m=>`<div class="flex-between small" style="gap:10px;padding:7px 0;border-bottom:1px solid var(--border);${m.myClub?'background:rgba(34,197,94,.06);margin:0 -8px;padding-left:8px;padding-right:8px;border-radius:6px':''}">
-      <span class="muted" style="min-width:92px">${m.date}</span>
-      <span class="very-small muted" style="min-width:44px">D${m.day}</span>
-      <span style="flex:1"><b>${m.home}</b> ${m.score} <b>${m.away}</b></span>
-      <span class="badge ${m.played?'b-pos':'b-spec'}">${m.status}</span>
-    </div>`).join('')}
-  </div>`).join('')}`;
+  <div class="card mb-2">
+    <div class="card-hdr">
+      <span>${monthName}</span>
+      <div class="flex-row">
+        <button class="btn btn-ghost btn-sm" onclick="_calendarMonthOffset--;nav('calendar')">‹</button>
+        <button class="btn btn-ghost btn-sm" onclick="_calendarMonthOffset=0;nav('calendar')">Hoje</button>
+        <button class="btn btn-ghost btn-sm" onclick="_calendarMonthOffset++;nav('calendar')">›</button>
+      </div>
+    </div>
+    <div class="flex-row small muted" style="gap:10px;flex-wrap:wrap;margin-bottom:10px">
+      <span><b style="color:var(--green)">BR</b> Brasileirão</span>
+      <span><b style="color:var(--accent)">CD</b> Copa do Brasil</span>
+      <span><b style="color:var(--blue)">LIB</b> Libertadores</span>
+    </div>
+    <div class="calendar-shell">
+      <div class="calendar-weekdays">${['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'].map(d=>`<div class="calendar-weekday">${d}</div>`).join('')}</div>
+      <div class="calendar-grid">
+        ${cells.map(c=>{
+          if(c.empty)return'<div class="calendar-day empty"></div>';
+          const visible=c.matches.slice(0,3);
+          const hasMe=c.matches.some(m=>m.myClub);
+          return`<div class="calendar-day ${c.iso===currentISO?'today':''} ${hasMe?'has-me':''}" onclick="openCalendarDay('${c.iso}')">
+            <div class="calendar-day-head"><span class="calendar-day-num">${c.day}</span><span class="calendar-day-date">${c.iso.slice(5)}</span></div>
+            <div class="calendar-events">
+              ${visible.map(m=>{const tag=competitionTag(m.competition);return`<div class="cal-event ${tag.cls} ${m.myClub?'me':''} ${m.played?'played':''}"><span class="cal-tag">${tag.tag}</span>${m.home} x ${m.away}</div>`}).join('')}
+              ${c.matches.length>3?`<div class="calendar-more">+${c.matches.length-3} jogos</div>`:''}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+
+function openCalendarDay(dateISO){
+  const day=getCalendarDays().find(d=>d.date===dateISO)||{date:dateISO,display:dateISO,matches:[]};
+  const pending=day.matches.filter(m=>m.status!=='played').length;
+  document.getElementById('calDayTitle').textContent=`Calendário - ${day.display||dateISO}`;
+  document.getElementById('calDayBody').innerHTML=`
+    <div class="flex-between mb-2">
+      <div class="small muted">${day.matches.length} jogo(s) neste dia</div>
+      <button class="btn btn-green btn-sm" onclick="simulateCalendarDay('${dateISO}')">Simular dia</button>
+    </div>
+    ${day.matches.length?day.matches.map(m=>{
+      const tag=competitionTag(m.competition);
+      return`<div class="day-match ${m.status==='played'?'played':''}">
+        <div class="flex-between" style="gap:8px">
+          <div><span class="badge ${tag.cls}" style="color:${tag.color}">${tag.tag}</span> <b>${m.competition}</b></div>
+          <span class="badge ${m.status==='played'?'b-pos':'b-spec'}">${m.status==='played'?'Finalizado':'Pendente'}</span>
+        </div>
+        <div class="flex-between mt-1">
+          <span>${m.homeTeam}</span>
+          <span class="day-match-score">${m.status==='played'?m.score:'vs'}</span>
+          <span>${m.awayTeam}</span>
+        </div>
+      </div>`;
+    }).join(''):'<div class="small muted">Nenhum jogo marcado para este dia.</div>'}
+    ${pending?`<button class="btn btn-green btn-lg mt-2" style="width:100%" onclick="simulateCalendarDay('${dateISO}')">Simular ${pending} jogo(s)</button>`:''}
+  `;
+  openModal('overlayCalendarDay');
+}
+
+function simulateCalendarDay(dateISO){
+  const results=simulateMatchesByDate(dateISO);
+  closeModal('overlayCalendarDay');
+  toast(results.length?`${results.length} jogo(s) simulados`:'Nenhum jogo pendente neste dia');
+  nav('calendar');
+  return results;
 }
 
 // ── SEASON ─────────────────────────────────────────────────
@@ -4371,6 +4548,7 @@ function openPlayer(id){
 document.getElementById('overlayPlayer').addEventListener('click',function(e){if(e.target===this)closeModal('overlayPlayer');});
 document.getElementById('overlaySetup').addEventListener('click',function(e){if(e.target===this)closeModal('overlaySetup');});
 document.getElementById('overlayMatch').addEventListener('click',function(e){if(e.target===this)closeModal('overlayMatch');});
+document.getElementById('overlayCalendarDay').addEventListener('click',function(e){if(e.target===this)closeModal('overlayCalendarDay');});
 
 // ═══════════════════════════════════════════════════════════
 //  MATCH MODAL
