@@ -320,6 +320,22 @@ tr.my-club td:first-child{border-left:3px solid var(--green)}
 .startup-progress{width:260px;height:4px;background:var(--bg3);border-radius:2px;overflow:hidden}
 .startup-fill{height:100%;background:linear-gradient(90deg,var(--green),var(--accent));border-radius:2px;transition:width .18s}
 .startup-text{color:var(--text3);font-size:.72rem}
+
+/* LOGIN */
+#loginOverlay{position:fixed;inset:0;z-index:650;background:radial-gradient(circle at 28% 15%,rgba(34,197,94,.22),transparent 32%),radial-gradient(circle at 82% 5%,rgba(59,130,246,.18),transparent 24%),var(--bg);display:flex;align-items:center;justify-content:center;padding:18px}
+.login-card{width:min(420px,100%);background:rgba(13,19,33,.94);border:1px solid var(--border2);border-radius:12px;padding:24px;box-shadow:0 24px 80px rgba(0,0,0,.42)}
+.login-title{font-size:1.55rem;font-weight:900;color:var(--green);letter-spacing:.3px;margin-bottom:4px}
+.login-sub{font-size:.8rem;color:var(--text2);margin-bottom:18px}
+.login-form{display:flex;flex-direction:column;gap:10px}
+.login-form label{font-size:.65rem;text-transform:uppercase;letter-spacing:.6px;color:var(--text3);font-weight:800}
+.login-input{width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:10px 12px;font-size:.86rem;outline:none}
+.login-input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(34,197,94,.12)}
+.login-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.login-hint{font-size:.68rem;color:var(--text3);line-height:1.45;margin-top:12px}
+.login-error{min-height:18px;color:var(--red);font-size:.72rem;font-weight:700}
+.login-account-row{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:10px}
+.login-account-row b{font-size:.78rem}
+.login-account-row span{font-size:.65rem;color:var(--text3)}
 @media(max-width:768px){#sidebar{display:none}.tb-stats{display:none}.calendar-shell{overflow-x:auto}.calendar-weekdays,.calendar-grid{min-width:760px}.month-match-row{grid-template-columns:1fr}.month-match-row .flex-row{justify-content:space-between}}
 @media(max-width:600px){.gap-grid{grid-template-columns:1fr 1fr}.two-col{grid-template-columns:1fr}}
 @keyframes pageIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
@@ -363,8 +379,37 @@ tr.my-club td:first-child{border-left:3px solid var(--green)}
 </div>
 
 
+<!-- LOGIN -->
+<div id="loginOverlay">
+  <div class="login-card">
+    <div class="login-title">Football Manager Pro</div>
+    <div class="login-sub">Entre com usuário e email para carregar sua carreira local.</div>
+    <div class="login-form">
+      <div>
+        <label for="loginUsername">Username</label>
+        <input class="login-input" id="loginUsername" autocomplete="username" placeholder="Seu nome de treinador">
+      </div>
+      <div>
+        <label for="loginEmail">Email</label>
+        <input class="login-input" id="loginEmail" type="email" autocomplete="email" placeholder="voce@email.com">
+      </div>
+      <div>
+        <label for="loginPassword">Senha simples opcional</label>
+        <input class="login-input" id="loginPassword" type="password" autocomplete="current-password" placeholder="Opcional neste modo local">
+      </div>
+      <div class="login-error" id="loginError"></div>
+      <div class="login-actions">
+        <button class="btn btn-green btn-lg" onclick="submitLogin(false)">Entrar no Jogo</button>
+        <button class="btn btn-blue btn-lg" onclick="submitLogin(true)">Criar Conta</button>
+      </div>
+      <div class="login-hint">As contas ficam somente neste navegador via localStorage. Cada email tem seu próprio save de carreira.</div>
+      <div id="knownAccounts"></div>
+    </div>
+  </div>
+</div>
+
 <!-- STARTUP LOADER -->
-<div id="startup">
+<div id="startup" style="display:none">
   <div class="startup-logo">⚽ FM <span>Pro</span></div>
   <div class="startup-sub">Football Manager Pro</div>
   <div class="startup-progress"><div class="startup-fill" id="spFill" style="width:0%"></div></div>
@@ -387,6 +432,7 @@ tr.my-club td:first-child{border-left:3px solid var(--green)}
   </div>
   <div class="tb-btns">
     <button class="tb-btn" onclick="quickSave()">💾 Salvar</button>
+    <button class="tb-btn" onclick="logoutUser()">Sair</button>
   </div>
 </div>
 
@@ -600,6 +646,7 @@ let G={
   qualifiedLibertadores:[],
   gameEconomy:{money:50e6,gold:350,inflationControl:1,goldToMoney:100000},
   user:{loginStreak:0,lastLoginDate:null,lastReward:null},
+  account:{username:null,email:null,createdAt:null,lastLogin:null},
   managerProfile:{reputation:45,careerLevel:'iniciante',titlesWon:0,winRate:0,jobOffers:[]},
   coach:{name:'Treinador',reputation:45,level:1,titles:[],jobSecurity:78},
   coachDecisions:{rotation:false,youthFocus:false,protectStars:false,marketSale:false,tacticalShift:false,lastDecision:null},
@@ -3196,18 +3243,126 @@ function simulateTVModeRound(excludeFixture=null){
 // ═══════════════════════════════════════════════════════════
 //  SAVE / LOAD
 // ═══════════════════════════════════════════════════════════
+let _authUser=null;
+let _startupRunning=false;
+
+function normalizeAccountKey(email){
+  return String(email||'').trim().toLowerCase();
+}
+
+function getAccounts(){
+  try{return JSON.parse(localStorage.getItem('fmpro_accounts')||'{}')||{};}catch(e){return{};}
+}
+
+function setAccounts(accounts){
+  localStorage.setItem('fmpro_accounts',JSON.stringify(accounts||{}));
+}
+
+function saveKeyFor(email=(_authUser&&_authUser.email)){
+  const key=normalizeAccountKey(email);
+  return key?`fmpro_save_${key.replace(/[^a-z0-9._-]/g,'_')}`:'fmpro_v5';
+}
+
+function renderKnownAccounts(){
+  const box=document.getElementById('knownAccounts');
+  if(!box)return;
+  const accounts=Object.values(getAccounts()).sort((a,b)=>String(b.lastLogin||'').localeCompare(String(a.lastLogin||''))).slice(0,3);
+  box.innerHTML=accounts.length?accounts.map(a=>`<div class="login-account-row">
+    <div><b>${a.username}</b><br><span>${a.email}</span></div>
+    <button class="btn btn-ghost btn-sm" onclick="prefillLogin(decodeURIComponent('${encodeURIComponent(a.email)}'))">Usar</button>
+  </div>`).join(''):'';
+}
+
+function prefillLogin(email){
+  const acc=getAccounts()[normalizeAccountKey(email)];
+  if(!acc)return;
+  document.getElementById('loginUsername').value=acc.username||'';
+  document.getElementById('loginEmail').value=acc.email||'';
+  document.getElementById('loginPassword').focus();
+}
+
+function loginUser(username,email,password=''){
+  const cleanName=String(username||'').trim();
+  const cleanEmail=normalizeAccountKey(email);
+  if(cleanName.length<2)throw new Error('Informe um username com pelo menos 2 caracteres.');
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail))throw new Error('Informe um email válido.');
+  const accounts=getAccounts();
+  const now=new Date().toISOString();
+  let account=accounts[cleanEmail];
+  if(!account){
+    account={username:cleanName,email:cleanEmail,createdAt:now,lastLogin:now,passwordHint:password?String(password).slice(0,2):''};
+  }else{
+    account.username=cleanName||account.username;
+    account.lastLogin=now;
+  }
+  accounts[cleanEmail]=account;
+  setAccounts(accounts);
+  localStorage.setItem('fmpro_current_user',cleanEmail);
+  _authUser=account;
+  G.account=account;
+  return account;
+}
+
+function submitLogin(create=false){
+  const err=document.getElementById('loginError');
+  if(err)err.textContent='';
+  try{
+    const username=document.getElementById('loginUsername').value;
+    const email=document.getElementById('loginEmail').value;
+    const password=document.getElementById('loginPassword').value;
+    const account=loginUser(username,email,password);
+    document.getElementById('loginOverlay').style.display='none';
+    startup();
+    return account;
+  }catch(e){
+    if(err)err.textContent=e.message||'Não foi possível entrar.';
+    return null;
+  }
+}
+
+function bootLogin(){
+  const current=localStorage.getItem('fmpro_current_user');
+  const acc=current?getAccounts()[normalizeAccountKey(current)]:null;
+  renderKnownAccounts();
+  if(acc){
+    document.getElementById('loginUsername').value=acc.username||'';
+    document.getElementById('loginEmail').value=acc.email||'';
+  }
+}
+
+function logoutUser(){
+  quickSave();
+  localStorage.removeItem('fmpro_current_user');
+  _authUser=null;
+  document.getElementById('topbar').style.display='none';
+  document.getElementById('main').style.display='none';
+  document.getElementById('loginOverlay').style.display='flex';
+  renderKnownAccounts();
+}
+
+function loadGame(){
+  return load();
+}
+
 function save(){
   try{
     normalizeCareerSystems();
-    const data={...G,players:G.players.slice(0,MAX_MAIN_PLAYERS),baseYouth:G.baseYouth.slice(0,MAX_YOUTH_PLAYERS),market:G.market.slice(0,120),news:G.news.slice(0,60),newsFeed:(G.newsFeed||G.news||[]).slice(0,80),transferRumors:(G.transferRumors||[]).slice(0,30),worldTransfers:(G.worldTransfers||[]).slice(0,40),transferInbox:G.transferInbox.slice(0,20),transferNegotiations:G.transferNegotiations.slice(0,20),contractNegotiations:G.contractNegotiations.slice(0,20),liveScores:G.liveScores.slice(0,8),liveMatches:G.liveMatches.slice(0,8),managerProfile:G.managerProfile,coachDecisions:G.coachDecisions};
-    localStorage.setItem('fmpro_v5',JSON.stringify(data));
+    if(_authUser)G.account={..._authUser,lastLogin:new Date().toISOString()};
+    const data={...G,players:G.players.slice(0,MAX_MAIN_PLAYERS),baseYouth:G.baseYouth.slice(0,MAX_YOUTH_PLAYERS),market:G.market.slice(0,120),news:G.news.slice(0,60),newsFeed:(G.newsFeed||G.news||[]).slice(0,80),transferRumors:(G.transferRumors||[]).slice(0,30),worldTransfers:(G.worldTransfers||[]).slice(0,40),aiTransferOffers:(G.aiTransferOffers||[]).slice(0,50),transferInbox:G.transferInbox.slice(0,20),transferNegotiations:G.transferNegotiations.slice(0,20),contractNegotiations:G.contractNegotiations.slice(0,20),liveScores:G.liveScores.slice(0,8),liveMatches:G.liveMatches.slice(0,8),managerProfile:G.managerProfile,coachDecisions:G.coachDecisions,account:G.account};
+    localStorage.setItem(saveKeyFor(),JSON.stringify(data));
+    localStorage.setItem('fm_save',JSON.stringify(data));
   }catch(e){}
 }
 
 function load(){
   try{
-    const raw=localStorage.getItem('fmpro_v5');
-    if(raw){const d=JSON.parse(raw);Object.assign(G,d);migrateSaveState();return true;}
+    const accountCount=Object.keys(getAccounts()).length;
+    const canImportLegacy=!_authUser||accountCount<=1;
+    const keys=[saveKeyFor(),canImportLegacy?'fmpro_v5':null,canImportLegacy?'fm_save':null].filter(Boolean);
+    for(const key of keys){
+      const raw=localStorage.getItem(key);
+      if(raw){const d=JSON.parse(raw);Object.assign(G,d);if(_authUser)G.account=_authUser;migrateSaveState();return true;}
+    }
   }catch(e){}
   return false;
 }
@@ -5215,19 +5370,23 @@ function saveClubSetup(){
 //  STARTUP & INIT
 // ═══════════════════════════════════════════════════════════
 async function startup(){
+  if(_startupRunning)return;
+  _startupRunning=true;
   const fill=document.getElementById('spFill');
   const txt=document.getElementById('spText');
   const progress=pct=>{fill.style.width=pct+'%';};
+  document.getElementById('startup').style.display='flex';
 
-  const loaded=load();
-  if(loaded&&G.players.length>100){
+  const loaded=loadGame();
+  if(loaded&&G.players.length){
     progress(100);
     document.getElementById('startup').style.display='none';
     document.getElementById('topbar').style.display='flex';
     document.getElementById('main').style.display='flex';
     _setupBadge=G.club.badge;_setupColor=G.club.color;
     processLoginReward();
-    updateTopbar();nav('dashboard');
+    updateTopbar();save();nav('dashboard');
+    _startupRunning=false;
     return;
   }
   // Fresh game
@@ -5273,10 +5432,11 @@ async function startup(){
   // First-time setup
   showClubSetup();
   nav('dashboard');
+  _startupRunning=false;
 }
 
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
-startup();
+bootLogin();
 </script>
 
 <script>
