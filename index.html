@@ -579,7 +579,7 @@ let G={
   cup:{name:'Copa do Brasil',rounds:[],currentRound:0,started:false,finished:false},
   continental:{name:'Libertadores',rounds:[],currentRound:0,started:false,finished:false},
   custom:{rounds:[],started:false,finished:false,teams:8},
-  seasonEngine:{currentWeek:1,currentDay:1,competitions:[],calendar:[],lastMatchDay:0,nextAction:'training'},
+  seasonEngine:{year:new Date().getFullYear(),currentDay:1,currentWeek:1,fixtures:[],competitions:[],teams:[],calendar:[],lastMatchDay:0,nextAction:'training',generated:false},
   baseYouth:[],
   history:[],
   stats:{goals:0,assists:0,wins:0,draws:0,losses:0,cleanSheets:0,yellowCards:0,redCards:0,injuries:0,totalGames:0},
@@ -604,6 +604,7 @@ let G={
   coachDecisions:{rotation:false,youthFocus:false,protectStars:false,marketSale:false,tacticalShift:false,lastDecision:null},
   nextPlayerId:10000,
 };
+let season=G.seasonEngine;
 
 // ═══════════════════════════════════════════════════════════
 //  UTILITIES
@@ -1363,18 +1364,41 @@ function getNextMyFixture(){
   return getMyFixtures().find(f=>!f.played);
 }
 
-function ensureSeasonEngine(){
-  G.seasonEngine=G.seasonEngine||{currentWeek:1,currentDay:1,competitions:[],calendar:[],lastMatchDay:0,nextAction:'training'};
-  G.seasonEngine.currentWeek=G.seasonEngine.currentWeek||1;
+function createSeasonEngineShell(){
+  const year=new Date().getFullYear()+Math.max(0,(G.season||1)-1);
+  return{year,currentDay:1,currentWeek:1,fixtures:[],competitions:[],teams:[],calendar:[],lastMatchDay:0,nextAction:'training',generated:false};
+}
+
+function syncSeasonAlias(){
+  G.seasonEngine=G.seasonEngine||createSeasonEngineShell();
+  G.seasonEngine.year=G.seasonEngine.year||new Date().getFullYear()+Math.max(0,(G.season||1)-1);
   G.seasonEngine.currentDay=G.seasonEngine.currentDay||1;
+  G.seasonEngine.currentWeek=G.seasonEngine.currentWeek||Math.max(1,Math.ceil(G.seasonEngine.currentDay/7));
+  G.seasonEngine.fixtures=G.seasonEngine.fixtures||G.seasonEngine.calendar||[];
+  G.seasonEngine.calendar=G.seasonEngine.fixtures;
   G.seasonEngine.lastMatchDay=G.seasonEngine.lastMatchDay||0;
   G.seasonEngine.nextAction=G.seasonEngine.nextAction||'training';
+  season=G.seasonEngine;
+  return season;
+}
+
+function ensureSeasonEngine(){
+  syncSeasonAlias();
   G.seasonEngine.competitions=[
     {name:G.league?.name||'Brasileirão',type:'league',started:!!G.league?.started},
     {name:G.cup?.name||'Copa do Brasil',type:'cup',started:!!G.cup?.started},
     {name:G.continental?.name||'Libertadores',type:'continental',started:!!G.continental?.started}
   ];
-  return rebuildSeasonCalendar();
+  G.seasonEngine.teams=[
+    ...(G.league?.table||[]).map(t=>t.name),
+    ...(G.cup?.pool||[]),
+    ...(G.continental?.pool||[])
+  ].filter((v,i,a)=>v&&a.indexOf(v)===i);
+  if(!G.seasonEngine.fixtures?.length&&(G.league?.started||G.cup?.started||G.continental?.started)){
+    rebuildSeasonCalendar(true);
+  }
+  syncSeasonAlias();
+  return G.seasonEngine.fixtures;
 }
 
 function startUnifiedSeason(){
@@ -1384,7 +1408,8 @@ function startUnifiedSeason(){
   if(!G.league?.started)initLeague(leagueName);
   if(!G.cup?.started)G.cup=initCupFull('Copa do Brasil');
   if(!G.continental?.started)G.continental=initCupFull('Libertadores');
-  G.seasonEngine={currentWeek:1,currentDay:1,competitions:[],calendar:[],lastMatchDay:0,nextAction:'training'};
+  G.seasonEngine=createSeasonEngineShell();
+  rebuildSeasonCalendar(true);
   updateAllTables();
   addNews('Temporada unificada iniciada com liga, copa e Libertadores no mesmo calendario','season');
   save();
@@ -1422,7 +1447,10 @@ function parsePtDateToISO(date){
 
 function upsertCalendarEntry(entries,entry){
   const existing=(G.seasonEngine?.calendar||[]).find(e=>e.id===entry.id);
-  entries.push({...existing,...entry});
+  const merged={...existing,...entry};
+  merged.matchId=merged.matchId||merged.id;
+  merged.played=merged.status==='played';
+  entries.push(merged);
 }
 
 function isUserMatch(match,userTeam=G.club.name){
@@ -1449,8 +1477,9 @@ function repairLeagueFixturesIfNeeded(){
   assignFixtureRounds(G.league.fixtures,clubs.length,G.league.name);
 }
 
-function rebuildSeasonCalendar(){
-  G.seasonEngine=G.seasonEngine||{currentWeek:1,currentDay:1,competitions:[],calendar:[],lastMatchDay:0,nextAction:'training'};
+function rebuildSeasonCalendar(force=false){
+  syncSeasonAlias();
+  if(G.seasonEngine.generated&&G.seasonEngine.fixtures?.length&&!force)return G.seasonEngine.fixtures;
   repairLeagueFixturesIfNeeded();
   const entries=[];
   (G.league.fixtures||[]).forEach(f=>{
@@ -1477,8 +1506,59 @@ function rebuildSeasonCalendar(){
     {name:G.continental?.name||'Libertadores',type:'continental',started:!!G.continental?.started},
     ...(G.custom?.started?[{name:'Torneio Custom',type:'custom',started:true}]:[])
   ];
-  G.seasonEngine.calendar=applyRestSpacing(entries).sort((a,b)=>a.day-b.day||a.competition.localeCompare(b.competition)||a.homeTeam.localeCompare(b.homeTeam));
-  return G.seasonEngine.calendar;
+  G.seasonEngine.fixtures=dedupeSeasonFixtures(applyRestSpacing(entries)).sort((a,b)=>a.day-b.day||a.competition.localeCompare(b.competition)||a.homeTeam.localeCompare(b.homeTeam));
+  G.seasonEngine.fixtures.forEach(e=>{e.played=e.status==='played';e.matchId=e.matchId||e.id;});
+  G.seasonEngine.calendar=G.seasonEngine.fixtures;
+  G.seasonEngine.generated=true;
+  syncSeasonAlias();
+  return G.seasonEngine.fixtures;
+}
+
+function dedupeSeasonFixtures(fixtures){
+  const seen=new Set();
+  return(fixtures||[]).filter(f=>{
+    const key=f.id||`${f.dateISO}-${f.competition}-${f.homeTeam}-${f.awayTeam}`;
+    if(seen.has(key))return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function findSeasonFixtureByEntry(entry){
+  syncSeasonAlias();
+  return(G.seasonEngine.fixtures||[]).find(f=>f.id===entry?.id||f.matchId===entry?.matchId);
+}
+
+function syncSeasonFixture(entry,source){
+  const fixture=findSeasonFixtureByEntry(entry);
+  if(!fixture||!source)return;
+  if(source.home)fixture.homeTeam=source.home;
+  if(source.away)fixture.awayTeam=source.away;
+  fixture.homeGoals=source.hG??source.homeGoals??fixture.homeGoals??0;
+  fixture.awayGoals=source.aG??source.awayGoals??fixture.awayGoals??0;
+  fixture.status=source.played||source.status==='played'?'played':fixture.status||'scheduled';
+  fixture.played=fixture.status==='played';
+  fixture.dateISO=fixture.dateISO||calendarISOForDay(fixture.day);
+  fixture.date=fixture.date||calendarDateForDay(fixture.day);
+}
+
+function refreshSeasonFixtureResults(){
+  syncSeasonAlias();
+  (G.seasonEngine.fixtures||[]).forEach(entry=>{
+    if(entry.type==='league'){
+      const f=(G.league.fixtures||[]).find(x=>x.id===entry.fixtureId);
+      if(f)syncSeasonFixture(entry,f);
+    }else if(entry.type==='cup'||entry.type==='continental'){
+      const round=getCompetitionState(entry.type)?.rounds?.[entry.roundIndex];
+      const m=round?.matches?.[entry.matchIndex];
+      if(m)syncSeasonFixture(entry,m);
+    }else if(entry.type==='custom'){
+      const f=G.custom.fixtures?.[entry.fixtureIndex];
+      if(f)syncSeasonFixture(entry,f);
+    }
+  });
+  G.seasonEngine.calendar=G.seasonEngine.fixtures;
+  return G.seasonEngine.fixtures;
 }
 
 function addCupToSeasonCalendar(entries,cupState,startWeek,type){
@@ -1714,8 +1794,8 @@ function updateAllTables(){
     G.custom.table=initializeTournamentTable(G.custom.teams||[]);
     (G.custom.fixtures||[]).filter(f=>f.played).forEach(f=>updateCustomTournamentTable(f));
   }
-  rebuildSeasonCalendar();
-  return{league:G.league.table,cup:G.cup.table||[],continental:G.continental.table||[],calendar:G.seasonEngine?.calendar||[]};
+  refreshSeasonFixtureResults();
+  return{league:G.league.table,cup:G.cup.table||[],continental:G.continental.table||[],calendar:G.seasonEngine?.fixtures||[]};
 }
 
 function getCompetitionState(type){
@@ -1801,8 +1881,8 @@ function simulateCustomFixture(f){
 function processNextWeek(){
   if(!G.league?.started&&!G.cup?.started&&!G.continental?.started)startUnifiedSeason();
   ensureSeasonEngine();
-  const week=G.seasonEngine.currentWeek||1;
-  const weekGames=G.seasonEngine.calendar.filter(e=>e.week===week&&e.status!=='played');
+  const week=season.currentWeek||1;
+  const weekGames=(season.fixtures||[]).filter(e=>e.week===week&&e.status!=='played');
   const results=[];
   weekGames.sort((a,b)=>(a.day||1)-(b.day||1)).forEach(entry=>{
     const daysPassed=Math.max(1,(entry.day||((week-1)*7+1))-(G.seasonEngine.currentDay||1));
@@ -1820,7 +1900,7 @@ function processNextWeek(){
   updateAllTables();
   G.seasonEngine.currentWeek=week+1;
   G.seasonEngine.nextAction='training';
-  const nextPending=G.seasonEngine.calendar.find(e=>e.week>=G.seasonEngine.currentWeek&&e.status!=='played');
+  const nextPending=(season.fixtures||[]).find(e=>e.week>=G.seasonEngine.currentWeek&&e.status!=='played');
   if(!nextPending&&results.length===0){
     addNews('Temporada sem jogos pendentes no calendario unificado','season');
   }else{
@@ -1835,7 +1915,7 @@ function processNextWeek(){
 
 function getMatchesByDate(dateISO){
   ensureSeasonEngine();
-  return (G.seasonEngine.calendar||[]).filter(e=>(e.dateISO||parsePtDateToISO(e.date))===dateISO);
+  return (season.fixtures||[]).filter(e=>(e.dateISO||parsePtDateToISO(e.date))===dateISO);
 }
 
 function simulateMatchesByDate(dateISO){
@@ -1855,13 +1935,13 @@ function simulateMatchesByDate(dateISO){
 function advanceDay(){
   if(!G.league?.started&&!G.cup?.started&&!G.continental?.started)startUnifiedSeason();
   ensureSeasonEngine();
-  const day=G.seasonEngine.currentDay||1;
+  const day=season.currentDay||1;
   const dateISO=calendarISOForDay(day);
   recoverSquadDays(1,'between');
   const results=simulateMatchesByDate(dateISO);
-  G.seasonEngine.currentDay=day+1;
-  G.seasonEngine.currentWeek=Math.max(1,Math.ceil(G.seasonEngine.currentDay/7));
-  G.seasonEngine.nextAction='training';
+  season.currentDay=day+1;
+  season.currentWeek=Math.max(1,Math.ceil(season.currentDay/7));
+  season.nextAction='training';
   updateAllTables();
   toast(results.length?`Dia avançado: ${results.length} jogo(s)`:'Dia avançado sem jogos');
   nav(_curPage);
@@ -2089,7 +2169,10 @@ function normalizeCareerSystems(){
   G.seasonEngine.currentWeek=G.seasonEngine.currentWeek||1;
   G.seasonEngine.currentDay=G.seasonEngine.currentDay||((G.seasonEngine.currentWeek-1)*7+1);
   G.seasonEngine.competitions=G.seasonEngine.competitions||[];
-  G.seasonEngine.calendar=G.seasonEngine.calendar||[];
+  G.seasonEngine.fixtures=G.seasonEngine.fixtures||G.seasonEngine.calendar||[];
+  G.seasonEngine.calendar=G.seasonEngine.fixtures;
+  G.seasonEngine.teams=G.seasonEngine.teams||[];
+  G.seasonEngine.year=G.seasonEngine.year||new Date().getFullYear()+Math.max(0,(G.season||1)-1);
   G.seasonEngine.lastMatchDay=G.seasonEngine.lastMatchDay||0;
   G.seasonEngine.nextAction=G.seasonEngine.nextAction||'training';
   G.managerProfile=G.managerProfile||{reputation:G.coach?.reputation||45,careerLevel:'iniciante',titlesWon:G.coach?.titles?.length||0,winRate:0,jobOffers:[]};
@@ -2123,7 +2206,7 @@ function normalizeCareerSystems(){
     G.continental={name:'Libertadores',rounds:[],currentRound:0,started:false,finished:false};
   }
   if(G.league?.fixtures?.length)assignFixtureRounds(G.league.fixtures,G.league.table?.length||20,G.league.name);
-  if(G.league?.started||G.cup?.started||G.continental?.started)rebuildSeasonCalendar();
+  if((G.league?.started||G.cup?.started||G.continental?.started)&&!G.seasonEngine.fixtures.length)rebuildSeasonCalendar(true);
   G.club.objectives=G.club.objectives||calculateClubObjectives();
   G.qualifiedLibertadores=G.qualifiedLibertadores||[];
   G.players=(G.players||[]).map(normalizeMarketPlayer);
@@ -4352,7 +4435,7 @@ function normalizeCalendarMatch(match,competition,roundLabel,roundNum,dateFallba
 
 function getSeasonCalendarMatches(){
   ensureSeasonEngine();
-  return (G.seasonEngine.calendar||[]).map(e=>({
+  return (season.fixtures||[]).map(e=>({
     id:e.id,
     competition:e.competition,
     type:e.type,
@@ -4537,7 +4620,7 @@ function openCalendarDay(dateISO){
 
 function openMatchReport(entryId){
   ensureSeasonEngine();
-  const entry=(G.seasonEngine.calendar||[]).find(e=>String(e.id)===String(entryId));
+  const entry=(season.fixtures||[]).find(e=>String(e.id)===String(entryId));
   if(!entry){toast('Jogo não encontrado','warn');return;}
   const tag=competitionTag(entry.competition);
   const home=clubVisual(entry.homeTeam),away=clubVisual(entry.awayTeam);
@@ -4577,7 +4660,7 @@ function openMatchReport(entryId){
 
 function simulateSingleCalendarMatch(entryId){
   ensureSeasonEngine();
-  const entry=(G.seasonEngine.calendar||[]).find(e=>String(e.id)===String(entryId));
+  const entry=(season.fixtures||[]).find(e=>String(e.id)===String(entryId));
   if(!entry){toast('Jogo não encontrado','warn');return null;}
   const res=simulateCalendarEntry(entry);
   updateAllTables();
@@ -4600,8 +4683,8 @@ function simulateCalendarDay(dateISO){
 function renderSeason(){
   const str=calcStrength(G.squad,G.tactics);
   ensureSeasonEngine();
-  const pending=(G.seasonEngine.calendar||[]).filter(e=>e.status!=='played').length;
-  const weekGames=(G.seasonEngine.calendar||[]).filter(e=>e.week===(G.seasonEngine.currentWeek||1)&&e.status!=='played').length;
+  const pending=(season.fixtures||[]).filter(e=>e.status!=='played').length;
+  const weekGames=(season.fixtures||[]).filter(e=>e.week===(G.seasonEngine.currentWeek||1)&&e.status!=='played').length;
   return`<div class="page-hdr"><div class="page-title">📅 Temporada ${G.season}</div></div>
   <div class="cards-grid mb-3">
     <div class="stat-card"><div class="stat-val" style="color:var(--green)">${fmtM(G.club.budget)}</div><div class="stat-lbl">Orçamento</div></div>
