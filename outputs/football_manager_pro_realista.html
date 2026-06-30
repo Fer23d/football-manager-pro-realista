@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Football Manager Pro</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -3245,6 +3247,148 @@ function simulateTVModeRound(excludeFixture=null){
 // ═══════════════════════════════════════════════════════════
 let _authUser=null;
 let _startupRunning=false;
+let _cloudConfig=null;
+let _supabaseClient=null;
+let _cloudSaveTimer=null;
+const EMAILJS_CONFIG={
+  publicKey:'YOUR_PUBLIC_KEY',
+  serviceId:'SERVICE_ID',
+  templateId:'TEMPLATE_ID'
+};
+
+async function loadCloudConfig(){
+  if(_cloudConfig)return _cloudConfig;
+  try{
+    const res=await fetch('/api/config',{cache:'no-store'});
+    if(!res.ok)throw new Error('config indisponivel');
+    _cloudConfig=await res.json();
+  }catch(e){
+    _cloudConfig={supabaseUrl:'',supabaseAnonKey:'',cloudEnabled:false};
+  }
+  return _cloudConfig;
+}
+
+async function getSupabaseClient(){
+  const root=typeof window!=='undefined'?window:globalThis;
+  const cfg=await loadCloudConfig();
+  if(!cfg.supabaseUrl||!cfg.supabaseAnonKey||!root.supabase)return null;
+  if(!_supabaseClient)_supabaseClient=root.supabase.createClient(cfg.supabaseUrl,cfg.supabaseAnonKey);
+  return _supabaseClient;
+}
+
+async function getCloudSession(){
+  const client=await getSupabaseClient();
+  if(!client)return null;
+  try{
+    const {data}=await client.auth.getSession();
+    return data?.session||null;
+  }catch(e){return null;}
+}
+
+async function cloudRegisterOrLogin(username,email,password='',create=false){
+  const client=await getSupabaseClient();
+  if(!client||!password)return null;
+  const authCall=create
+    ? client.auth.signUp({email,password,options:{data:{username}}})
+    : client.auth.signInWithPassword({email,password});
+  const {data,error}=await authCall;
+  if(error)throw error;
+  const user=data?.user||data?.session?.user;
+  if(!user)return null;
+  _authUser={id:user.id,username:user.user_metadata?.username||username,email:user.email,createdAt:user.created_at,lastLogin:new Date().toISOString(),cloud:true};
+  G.account=_authUser;
+  localStorage.setItem('fmpro_current_user',user.email);
+  localStorage.setItem('fm_user',JSON.stringify(_authUser));
+  return _authUser;
+}
+
+async function autoSaveGame(state=G){
+  try{
+    const session=await getCloudSession();
+    if(!session?.access_token)return{skipped:true,reason:'no_session'};
+    const res=await fetch('/api/saveGame',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},
+      body:JSON.stringify({save_data:state})
+    });
+    if(!res.ok)throw new Error(await res.text());
+    return await res.json();
+  }catch(e){
+    console.warn('Cloud save falhou; save local preservado.',e);
+    return{error:true,detail:e};
+  }
+}
+
+function scheduleCloudSave(){
+  clearTimeout(_cloudSaveTimer);
+  _cloudSaveTimer=setTimeout(()=>autoSaveGame(G),900);
+}
+
+async function loadCloudGame(){
+  try{
+    const session=await getCloudSession();
+    if(!session?.access_token)return null;
+    const res=await fetch('/api/loadGame',{headers:{'Authorization':`Bearer ${session.access_token}`}});
+    if(res.status===404)return null;
+    if(!res.ok)throw new Error(await res.text());
+    const data=await res.json();
+    return data?.save_data||null;
+  }catch(e){
+    console.warn('Cloud load indisponivel; usando fallback local.',e);
+    return null;
+  }
+}
+
+function isEmailJSConfigured(){
+  return EMAILJS_CONFIG.publicKey&&EMAILJS_CONFIG.serviceId&&EMAILJS_CONFIG.templateId
+    &&!['YOUR_PUBLIC_KEY','SERVICE_ID','TEMPLATE_ID'].includes(EMAILJS_CONFIG.publicKey)
+    &&!['YOUR_PUBLIC_KEY','SERVICE_ID','TEMPLATE_ID'].includes(EMAILJS_CONFIG.serviceId)
+    &&!['YOUR_PUBLIC_KEY','SERVICE_ID','TEMPLATE_ID'].includes(EMAILJS_CONFIG.templateId);
+}
+
+function initEmailJS(){
+  const root=typeof window!=='undefined'?window:globalThis;
+  if(!isEmailJSConfigured()||!root.emailjs||root._fmEmailJSReady)return false;
+  try{
+    root.emailjs.init({publicKey:EMAILJS_CONFIG.publicKey});
+    root._fmEmailJSReady=true;
+    return true;
+  }catch(e){
+    console.warn('EmailJS indisponivel:',e);
+    return false;
+  }
+}
+
+function sendWelcomeEmail(user){
+  const root=typeof window!=='undefined'?window:globalThis;
+  const payload={
+    username:user.username,
+    email:user.email,
+    to_email:user.email,
+    title:'Bem-vindo ao Football Manager Pro',
+    message:`Olá ${user.username}, seja bem-vindo ao Football Manager Pro! Sua carreira como treinador começa agora. Escolha seu clube, monte seu elenco e construa sua história.`
+  };
+  if(!isEmailJSConfigured()||!root.emailjs){
+    console.info('Email de boas-vindas não enviado: configure EMAILJS_CONFIG para ativar.',payload);
+    return Promise.resolve({skipped:true,reason:'not_configured'});
+  }
+  initEmailJS();
+  return root.emailjs.send(EMAILJS_CONFIG.serviceId,EMAILJS_CONFIG.templateId,payload)
+    .then(res=>{
+      console.info('Email de boas-vindas enviado para',user.email);
+      return res;
+    })
+    .catch(err=>{
+      console.warn('Falha ao enviar email de boas-vindas. Login preservado.',err);
+      return{error:true,detail:err};
+    });
+}
+
+function registerUser(username,email,password=''){
+  const user=loginUser(username,email,password);
+  localStorage.setItem('fm_user',JSON.stringify(user));
+  return user;
+}
 
 function normalizeAccountKey(email){
   return String(email||'').trim().toLowerCase();
@@ -3289,28 +3433,47 @@ function loginUser(username,email,password=''){
   const accounts=getAccounts();
   const now=new Date().toISOString();
   let account=accounts[cleanEmail];
+  const isNew=!account;
   if(!account){
-    account={username:cleanName,email:cleanEmail,createdAt:now,lastLogin:now,passwordHint:password?String(password).slice(0,2):''};
+    account={username:cleanName,email:cleanEmail,createdAt:now,lastLogin:now,passwordHint:password?String(password).slice(0,2):'',welcomeEmailSent:false};
   }else{
     account.username=cleanName||account.username;
     account.lastLogin=now;
   }
   accounts[cleanEmail]=account;
   setAccounts(accounts);
+  localStorage.setItem('fm_user',JSON.stringify(account));
   localStorage.setItem('fmpro_current_user',cleanEmail);
   _authUser=account;
   G.account=account;
+  if(isNew){
+    sendWelcomeEmail(account).then(result=>{
+      if(result&&!result.error&&!result.skipped){
+        const latest=getAccounts();
+        if(latest[cleanEmail]){
+          latest[cleanEmail].welcomeEmailSent=true;
+          latest[cleanEmail].welcomeEmailAt=new Date().toISOString();
+          setAccounts(latest);
+        }
+      }
+    });
+  }
   return account;
 }
 
-function submitLogin(create=false){
+async function submitLogin(create=false){
   const err=document.getElementById('loginError');
   if(err)err.textContent='';
   try{
     const username=document.getElementById('loginUsername').value;
     const email=document.getElementById('loginEmail').value;
     const password=document.getElementById('loginPassword').value;
-    const account=loginUser(username,email,password);
+    let account=null;
+    try{account=await cloudRegisterOrLogin(username,email,password,create);}catch(authErr){
+      if(create)console.warn('Supabase Auth indisponivel, usando conta local.',authErr);
+      else throw authErr;
+    }
+    if(!account)account=registerUser(username,email,password);
     document.getElementById('loginOverlay').style.display='none';
     startup();
     return account;
@@ -3320,18 +3483,30 @@ function submitLogin(create=false){
   }
 }
 
-function bootLogin(){
+async function bootLogin(){
   const current=localStorage.getItem('fmpro_current_user');
   const acc=current?getAccounts()[normalizeAccountKey(current)]:null;
   renderKnownAccounts();
+  const session=await getCloudSession();
+  if(session?.user){
+    _authUser={id:session.user.id,username:session.user.user_metadata?.username||session.user.email,email:session.user.email,createdAt:session.user.created_at,lastLogin:new Date().toISOString(),cloud:true};
+    G.account=_authUser;
+    localStorage.setItem('fmpro_current_user',session.user.email);
+    localStorage.setItem('fm_user',JSON.stringify(_authUser));
+    document.getElementById('loginOverlay').style.display='none';
+    startup();
+    return;
+  }
   if(acc){
     document.getElementById('loginUsername').value=acc.username||'';
     document.getElementById('loginEmail').value=acc.email||'';
   }
 }
 
-function logoutUser(){
+async function logoutUser(){
   quickSave();
+  const client=await getSupabaseClient();
+  if(client)try{await client.auth.signOut();}catch(e){}
   localStorage.removeItem('fmpro_current_user');
   _authUser=null;
   document.getElementById('topbar').style.display='none';
@@ -3340,7 +3515,9 @@ function logoutUser(){
   renderKnownAccounts();
 }
 
-function loadGame(){
+async function loadGame(){
+  const cloud=await loadCloudGame();
+  if(cloud){Object.assign(G,cloud);migrateSaveState();return true;}
   return load();
 }
 
@@ -3351,6 +3528,7 @@ function save(){
     const data={...G,players:G.players.slice(0,MAX_MAIN_PLAYERS),baseYouth:G.baseYouth.slice(0,MAX_YOUTH_PLAYERS),market:G.market.slice(0,120),news:G.news.slice(0,60),newsFeed:(G.newsFeed||G.news||[]).slice(0,80),transferRumors:(G.transferRumors||[]).slice(0,30),worldTransfers:(G.worldTransfers||[]).slice(0,40),aiTransferOffers:(G.aiTransferOffers||[]).slice(0,50),transferInbox:G.transferInbox.slice(0,20),transferNegotiations:G.transferNegotiations.slice(0,20),contractNegotiations:G.contractNegotiations.slice(0,20),liveScores:G.liveScores.slice(0,8),liveMatches:G.liveMatches.slice(0,8),managerProfile:G.managerProfile,coachDecisions:G.coachDecisions,account:G.account};
     localStorage.setItem(saveKeyFor(),JSON.stringify(data));
     localStorage.setItem('fm_save',JSON.stringify(data));
+    scheduleCloudSave();
   }catch(e){}
 }
 
@@ -5377,7 +5555,7 @@ async function startup(){
   const progress=pct=>{fill.style.width=pct+'%';};
   document.getElementById('startup').style.display='flex';
 
-  const loaded=loadGame();
+  const loaded=await loadGame();
   if(loaded&&G.players.length){
     progress(100);
     document.getElementById('startup').style.display='none';
